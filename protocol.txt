@@ -385,4 +385,4 @@ APK: https://github.com/linux100talion/protocol/releases/tag/latest-debug
 Программа переименована из «Напоминалка» в Protocol: имя приложения, пакет
 Android com.protocol, папки исходников, папка логов Documents/Protocol,
 репозиторий github.com/linux100talion/protocol, этот файл protocol.txt.
-Локальная папка /home/andriy/napominalka пока со старым именем.
+Локальная папка переименована в /home/andriy/protocol.
