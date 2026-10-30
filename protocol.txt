@@ -386,3 +386,10 @@ APK: https://github.com/linux100talion/protocol/releases/tag/latest-debug
 Android com.protocol, папки исходников, папка логов Documents/Protocol,
 репозиторий github.com/linux100talion/protocol, этот файл protocol.txt.
 Локальная папка переименована в /home/andriy/protocol.
+
+=== УСТАНОВКА ===
+
+30.10.2026: APK скачан в Download через gh из proot, установлен, приложение
+запущено, config.json (копия примера) из Documents/Protocol прошёл проверку.
+Дальше: подставить реальный конфиг, выдать разрешения, проверить работу
+в фоне и ночью.
