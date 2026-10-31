@@ -22,7 +22,6 @@ import com.protocol.engine.RunState
 import com.protocol.engine.Schedule
 import com.protocol.engine.Screen
 import com.protocol.log.EventLog
-import com.protocol.notif.AlertPlayer
 import com.protocol.notif.Notifications
 import com.protocol.ui.StepActivity
 
@@ -62,7 +61,6 @@ class ReminderService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var store: ConfigStore
     private lateinit var log: EventLog
-    private lateinit var alerts: AlertPlayer
     private var engine: Engine? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -74,7 +72,6 @@ class ReminderService : Service() {
         super.onCreate()
         store = ConfigStore(this)
         log = EventLog(this)
-        alerts = AlertPlayer(this)
         goForeground(getString(R.string.notif_service_text))
     }
 
@@ -128,7 +125,6 @@ class ReminderService : Service() {
     override fun onDestroy() {
         handler.removeCallbacks(tickRunnable)
         releaseWake()
-        alerts.release()
         super.onDestroy()
     }
 
@@ -160,7 +156,9 @@ class ReminderService : Service() {
             override fun log(event: String, vararg fields: String) = this@ReminderService.log.write(cycleDate(), event, *fields)
             override fun blocker(isStep: Boolean, id: String, cause: Cause, path: List<String>, reason: String) =
                 this@ReminderService.log.blocker(cycleDate(), isStep, id, cause, path, reason)
-            override fun alert() = alerts.play()
+            // Приложение полностью беззвучное: ни звука, ни вибрации. Сигнал только
+            // уведомлением и полноэкранным вопросом, экран включается.
+            override fun alert() {}
             override fun changed() {
                 store.engineStateJson = engine?.state?.toJson()
                 EngineHolder.bump()

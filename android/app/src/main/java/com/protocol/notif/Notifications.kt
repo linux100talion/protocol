@@ -30,7 +30,7 @@ object Notifications {
         })
         nm.createNotificationChannel(NotificationChannel(CH_ALERT, ctx.getString(R.string.channel_alert_name), NotificationManager.IMPORTANCE_HIGH).apply {
             description = ctx.getString(R.string.channel_alert_desc)
-            // Звук играем сами через поток будильника, чтобы работать при «Не беспокоить».
+            // Приложение беззвучное: без звука и вибрации на всех каналах.
             setSound(null, null)
             enableVibration(false)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC

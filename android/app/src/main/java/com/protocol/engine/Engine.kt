@@ -36,7 +36,7 @@ sealed class Screen {
 interface EngineListener {
     fun log(event: String, vararg fields: String)
     fun blocker(isStep: Boolean, id: String, cause: Cause, path: List<String>, reason: String)
-    /** Звук и вибрация. */
+    /** Момент сигнала: первый показ шага и каждый повтор. Сейчас без звука и вибрации. */
     fun alert()
     /** Состояние изменилось: перерисовать экран, уведомления, сохранить. */
     fun changed()
