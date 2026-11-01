@@ -11,7 +11,6 @@ import com.protocol.config.ConfigEditor
 import com.protocol.config.ConfigException
 import com.protocol.config.ConfigParser
 import com.protocol.config.ConfigStore
-import com.protocol.config.ConfigValidator
 import com.protocol.config.Step
 import com.protocol.config.formatHHMM
 import com.protocol.databinding.DialogStepBinding
@@ -31,7 +30,6 @@ class ScheduleSection(
     private val store: ConfigStore,
     private val table: LinearLayout,
     private val editToggle: ImageButton,
-    private val onSaved: () -> Unit,
 ) {
     private var editMode = false
     private var cachedText: String? = null
@@ -95,7 +93,9 @@ class ScheduleSection(
             append("id в логе: ").append(s.id)
         }
         AlertDialog.Builder(activity).setTitle(s.displayTitle).setMessage(msg)
-            .setPositiveButton(android.R.string.ok, null).show()
+            .setPositiveButton(android.R.string.ok, null)
+            .setNeutralButton(R.string.btn_tree) { _, _ -> TreeActivity.open(activity, s.id, edit = false) }
+            .show()
     }
 
     // ---------- Правка ----------
@@ -112,12 +112,14 @@ class ScheduleSection(
         d.checkInput.setText(step?.check ?: "")
         d.forgotInput.setText(step?.forgot ?: "")
 
-        val dlg = AlertDialog.Builder(activity)
+        val builder = AlertDialog.Builder(activity)
             .setTitle(if (insert) R.string.sched_new_step else R.string.sched_edit_step)
             .setView(d.root)
             .setPositiveButton(R.string.btn_save, null)
             .setNegativeButton(android.R.string.cancel, null)
-            .create()
+        // Вложенные вопросы правятся на отдельном экране; у новой записи их пока нет.
+        if (step != null) builder.setNeutralButton(R.string.btn_tree) { _, _ -> TreeActivity.open(activity, step.id, edit = true) }
+        val dlg = builder.create()
         dlg.setOnShowListener {
             // Кнопка не закрывает диалог сама: при ошибке введённое остаётся.
             dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -152,17 +154,10 @@ class ScheduleSection(
 
     /** Проверить новый текст целиком, записать в файл, перерисовать. */
     private fun apply(newText: String): Boolean {
-        val config = try { ConfigParser.parse(newText) } catch (e: ConfigException) { showError(e.message ?: "ошибка"); return false }
-        val v = ConfigValidator.validate(config)
-        if (!v.ok) { showError(v.errors.joinToString("\n")); return false }
-        store.save(newText)?.let { showError(it); return false }
+        if (!ConfigSaver.apply(activity, store, newText)) return false
         render()
-        onSaved()
         return true
     }
 
-    private fun showError(msg: String) {
-        AlertDialog.Builder(activity).setTitle(R.string.sched_error).setMessage(msg)
-            .setPositiveButton(android.R.string.ok, null).show()
-    }
+    private fun showError(msg: String) = ConfigSaver.showError(activity, msg)
 }

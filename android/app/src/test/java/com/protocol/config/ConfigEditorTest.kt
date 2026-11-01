@@ -113,4 +113,62 @@ class ConfigEditorTest {
         try { ConfigEditor.insertAfter(json, 0, fields(id = "плохой", time = "09:00")); fail() } catch (_: ConfigException) { }
         try { ConfigEditor.update(json, 0, fields(time = "09:00", check = " ")); fail() } catch (_: ConfigException) { }
     }
+
+    // ---------- Узлы ----------
+
+    @Test
+    fun `put node adds and replaces`() {
+        val n = ConfigEditor.node("instruction", "Позвони", null, null, "done", emptyList())
+        var out = ConfigEditor.putNode(json, "b", "n2", n)
+        var b = valid(out).step("b")!!
+        assertEquals(3, b.nodes.size)
+        assertEquals("done", (b.nodes["n2"] as Node.Instruction).next)
+
+        val y = ConfigEditor.node("yesno", "Готово?", "done", "n2", null, emptyList())
+        out = ConfigEditor.putNode(out, "b", "n1", y)
+        b = valid(out).step("b")!!
+        assertEquals("n2", (b.nodes["n1"] as Node.YesNo).no)
+    }
+
+    @Test
+    fun `choice node keeps options order`() {
+        val c = ConfigEditor.node("choice", "Что?", null, null, null, listOf("Раз" to "done", "Два" to "fail"))
+        val out = ConfigEditor.putNode(json, "a", "n1", c)
+        val a = valid(out).step("a")!!
+        val node = a.nodes["n1"] as Node.Choice
+        assertEquals(listOf("Раз", "Два"), node.options.map { it.label })
+        assertEquals("fail", node.options[1].next)
+    }
+
+    @Test
+    fun `delete node makes dangling reference visible to validator`() {
+        val out = ConfigEditor.deleteNode(json, "a", "fail")
+        val v = ConfigValidator.validate(ConfigParser.parse(out))
+        assertTrue(v.errors.any { it.contains("fail") })
+    }
+
+    @Test
+    fun `set roots`() {
+        var out = ConfigEditor.setRoots(json, "a", "done", "fail")
+        var a = valid(out).step("a")!!
+        assertEquals("done", a.onYes); assertEquals("fail", a.onNo)
+        out = ConfigEditor.setRoots(out, "a", null, "n1")
+        a = valid(out).step("a")!!
+        assertNull(a.onYes); assertEquals("n1", a.onNo)
+    }
+
+    @Test
+    fun `new node id is free within the step`() {
+        assertEquals("n2", ConfigEditor.newNodeId(json, "a"))
+        assertEquals("n1", ConfigEditor.newNodeId(json, "missing"))
+    }
+
+    @Test
+    fun `node builder rejects incomplete input`() {
+        try { ConfigEditor.node("yesno", "Q?", "done", null, null, emptyList()); fail() } catch (_: ConfigException) { }
+        try { ConfigEditor.node("instruction", " ", null, null, "done", emptyList()); fail() } catch (_: ConfigException) { }
+        try { ConfigEditor.node("choice", "Q?", null, null, null, emptyList()); fail() } catch (_: ConfigException) { }
+        try { ConfigEditor.putNode(json, "a", "плохой", ConfigEditor.node("done", "", null, null, null, emptyList())); fail() } catch (_: ConfigException) { }
+        try { ConfigEditor.putNode(json, "nope", "n9", ConfigEditor.node("done", "", null, null, null, emptyList())); fail() } catch (_: ConfigException) { }
+    }
 }

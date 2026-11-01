@@ -52,6 +52,77 @@ object ConfigEditor {
 
     private val idRe = Regex("""^[A-Za-z0-9_]+$""")
 
+    // ---------- Узлы шага ----------
+
+    /** Добавить или заменить узел шага. */
+    fun putNode(json: String, stepId: String, nodeId: String, node: JSONObject): String = editStep(json, stepId) { step ->
+        val id = nodeId.trim()
+        if (!idRe.matches(id)) throw ConfigException("id узла должен быть из латиницы, цифр и _")
+        val nodes = step.optJSONObject("nodes") ?: JSONObject().also { step.put("nodes", it) }
+        nodes.put(id, node)
+    }
+
+    fun deleteNode(json: String, stepId: String, nodeId: String): String = editStep(json, stepId) { step ->
+        step.optJSONObject("nodes")?.remove(nodeId)
+    }
+
+    /** Куда ведут ответы на проверочный вопрос. onYes == null: шаг сразу закрыт. */
+    fun setRoots(json: String, stepId: String, onYes: String?, onNo: String): String = editStep(json, stepId) { step ->
+        if (onYes.isNullOrBlank()) step.remove("on_yes") else step.put("on_yes", onYes)
+        if (onNo.isBlank()) throw ConfigException("Ответ «нет» должен вести в узел")
+        step.put("on_no", onNo)
+    }
+
+    /** Свободный id узла вида nN. */
+    fun newNodeId(json: String, stepId: String): String {
+        val ids = HashSet<String>()
+        try {
+            val arr = JSONObject(json).optJSONArray("steps") ?: JSONArray()
+            for (i in 0 until arr.length()) {
+                val st = arr.getJSONObject(i)
+                if (st.optString("id") == stepId) st.optJSONObject("nodes")?.keys()?.forEach { ids += it }
+            }
+        } catch (_: JSONException) { }
+        var n = 1
+        while ("n$n" in ids) n++
+        return "n$n"
+    }
+
+    /** Собрать JSON узла по полям диалога с проверкой обязательных полей (SPEC 4.5). */
+    fun node(type: String, text: String, yes: String?, no: String?, next: String?, options: List<Pair<String, String?>>): JSONObject {
+        val o = JSONObject().put("type", type)
+        val t = text.trim()
+        fun needText() { if (t.isEmpty()) throw ConfigException("Текст узла не может быть пустым"); o.put("text", t) }
+        fun target(v: String?, what: String): String {
+            if (v.isNullOrBlank()) throw ConfigException("$what: не выбран узел для перехода")
+            return v
+        }
+        when (type) {
+            "yesno" -> { needText(); o.put("yes", target(yes, "Ответ «да»")); o.put("no", target(no, "Ответ «нет»")) }
+            "instruction", "text" -> { needText(); o.put("next", target(next, "Далее")) }
+            "choice" -> {
+                needText()
+                if (options.isEmpty()) throw ConfigException("У выбора должен быть хотя бы один вариант")
+                val arr = JSONArray()
+                for ((label, nx) in options) {
+                    val l = label.trim()
+                    if (l.isEmpty()) throw ConfigException("Надпись варианта не может быть пустой")
+                    arr.put(JSONObject().put("label", l).put("next", target(nx, "Вариант «$l»")))
+                }
+                o.put("options", arr)
+            }
+            "done" -> { }
+            "fail" -> needText()
+            else -> throw ConfigException("Неизвестный тип узла \"$type\"")
+        }
+        return o
+    }
+
+    private fun editStep(json: String, stepId: String, change: (JSONObject) -> Unit): String = edit(json) { steps ->
+        val step = steps.firstOrNull { it.optString("id") == stepId } ?: throw ConfigException("Шаг \"$stepId\" не найден")
+        change(step)
+    }
+
     private fun edit(json: String, change: (MutableList<JSONObject>) -> Unit): String {
         val root = try {
             JSONObject(json)

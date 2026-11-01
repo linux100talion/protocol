@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical">
+
+    <EditText
+        android:id="@+id/labelInput"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:hint="@string/tree_option_label"
+        android:inputType="textCapSentences" />
+
+    <Spinner
+        android:id="@+id/nextSpinner"
+        android:layout_width="0dp"
+        android:layout_height="48dp"
+        android:layout_weight="1" />
+
+    <ImageButton
+        android:id="@+id/removeButton"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@android:drawable/ic_menu_close_clear_cancel"
+        android:contentDescription="@string/btn_delete" />
+</LinearLayout>

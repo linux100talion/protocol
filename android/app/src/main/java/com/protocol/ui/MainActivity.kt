@@ -10,7 +10,6 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Button
-import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -64,12 +63,7 @@ class MainActivity : AppCompatActivity() {
             else if (ensurePermissions()) ReminderService.send(this, ReminderService.intent(this, ReminderService.ACTION_START))
         }
 
-        schedule = ScheduleSection(this, store, b.scheduleTable, b.editScheduleButton) {
-            // Файл изменён. Движок не в работе перечитает его сразу, работающий: после перезапуска.
-            val running = EngineHolder.engine?.state?.mode == Mode.RUNNING
-            ReminderService.send(this, ReminderService.intent(this, ReminderService.ACTION_RELOAD))
-            Toast.makeText(this, if (running) R.string.sched_saved_running else R.string.sched_saved, Toast.LENGTH_LONG).show()
-        }
+        schedule = ScheduleSection(this, store, b.scheduleTable, b.editScheduleButton)
 
         EngineHolder.version.observe(this) { render() }
         // Поднять движок, чтобы главный экран знал состояние.

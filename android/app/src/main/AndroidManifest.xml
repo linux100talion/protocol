@@ -59,6 +59,12 @@
             android:exported="false"
             android:parentActivityName=".ui.MainActivity" />
 
+        <!-- Подсказки шага: просмотр и правка дерева узлов. -->
+        <activity
+            android:name=".ui.TreeActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.MainActivity" />
+
         <service
             android:name=".service.ReminderService"
             android:exported="false"
