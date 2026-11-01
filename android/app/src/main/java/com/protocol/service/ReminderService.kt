@@ -241,7 +241,12 @@ class ReminderService : Service() {
         val activeProc = if (stepScreen == null) st.procs.firstOrNull { it.state != RunState.WAITING } else null
         val procScreen = activeProc?.let { e.procScreen(it.procId) }
         val screen: Screen? = stepScreen ?: procScreen
-        if (screen != null) {
+        // Процесс идёт на экране, поэтому сразу после нажатия уведомление не нужно:
+        // оно появляется, только когда человек молчит дольше repeat_sec, и дальше
+        // повторяется как обычно. Шаг по графику уведомляется сразу.
+        val procQuiet = stepScreen == null && activeProc != null &&
+            now() - activeProc.lastInteraction < e.config.timeouts.repeatMs
+        if (screen != null && !procQuiet) {
             nm.notify(Notifications.ID_ALERT, Notifications.alert(this, screen, activeProc?.procId))
         } else {
             nm.cancel(Notifications.ID_ALERT)
