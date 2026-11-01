@@ -243,19 +243,20 @@ class ReminderService : Service() {
         val procScreen = activeProc?.let { e.procScreen(it.procId) }
         val screen: Screen? = stepScreen ?: procScreen
         // Уведомление нужно, только когда оно действительно уведомляет.
-        // Сразу после нажатия кнопки его нет: следующий узел уже на экране.
-        // Оно появляется, когда человек молчит дольше repeat_sec, и дальше
-        // повторяется, пока узел не закрыт. Первое уведомление шага по
-        // графику остаётся, если окно приложения сейчас не на экране.
+        // Пока окно приложения на экране, сразу после нажатия кнопки его нет:
+        // следующий узел и так виден. Оно появляется, когда человек молчит
+        // дольше repeat_sec, и дальше повторяется, пока узел не закрыт.
+        // Если окна нет (ответ дан кнопкой в шторке), уведомление остаётся
+        // и показывает следующий узел: по нему можно войти в экран шага.
         val now = now()
         val repeatMs = e.config.timeouts.repeatMs
         val stepRun = st.activeStep
-        val stepQuiet = stepScreen != null && stepRun != null && stepRun.state == RunState.ACTIVE &&
-            now - stepRun.lastInteraction < repeatMs &&
-            (stepRun.lastInteraction > stepRun.t0 || AppVisibility.visible)
-        val procQuiet = stepScreen == null && activeProc != null &&
-            now - activeProc.lastInteraction < repeatMs
-        if (screen != null && !stepQuiet && !procQuiet) {
+        val quiet = AppVisibility.visible && when {
+            stepScreen != null -> stepRun != null && stepRun.state == RunState.ACTIVE && now - stepRun.lastInteraction < repeatMs
+            activeProc != null -> now - activeProc.lastInteraction < repeatMs
+            else -> false
+        }
+        if (screen != null && !quiet) {
             nm.notify(Notifications.ID_ALERT, Notifications.alert(this, screen, activeProc?.procId))
         } else {
             nm.cancel(Notifications.ID_ALERT)

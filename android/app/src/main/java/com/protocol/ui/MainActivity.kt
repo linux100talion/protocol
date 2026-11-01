@@ -79,6 +79,11 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         render()
+        // Если идёт шаг по графику, открыть сразу его экран, а не главный:
+        // например, после ответа «Нет» кнопкой в шторке уведомления.
+        if (EngineHolder.engine?.stepScreen() != null) {
+            startActivity(Intent(this, StepActivity::class.java))
+        }
     }
 
     private fun render() {
