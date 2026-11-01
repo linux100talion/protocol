@@ -90,7 +90,8 @@ class ConfigEditorTest {
     @Test
     fun `delete removes step and keeps others`() {
         val out = ConfigEditor.delete(json, 1)
-        assertEquals(listOf("a", "c"), ids(valid(out)))
+        valid(out)
+        assertEquals(listOf("a", "c"), ids(out))
     }
 
     @Test
