@@ -119,13 +119,13 @@ class ConfigEditorTest {
     @Test
     fun `put node adds and replaces`() {
         val n = ConfigEditor.node("instruction", "Позвони", null, null, "done", emptyList())
-        var out = ConfigEditor.putNode(json, "b", "n2", n)
+        var out = ConfigEditor.putNode(json, "steps", "b", "n2", n)
         var b = valid(out).step("b")!!
         assertEquals(3, b.nodes.size)
         assertEquals("done", (b.nodes["n2"] as Node.Instruction).next)
 
         val y = ConfigEditor.node("yesno", "Готово?", "done", "n2", null, emptyList())
-        out = ConfigEditor.putNode(out, "b", "n1", y)
+        out = ConfigEditor.putNode(out, "steps", "b", "n1", y)
         b = valid(out).step("b")!!
         assertEquals("n2", (b.nodes["n1"] as Node.YesNo).no)
     }
@@ -133,7 +133,7 @@ class ConfigEditorTest {
     @Test
     fun `choice node keeps options order`() {
         val c = ConfigEditor.node("choice", "Что?", null, null, null, listOf("Раз" to "done", "Два" to "fail"))
-        val out = ConfigEditor.putNode(json, "a", "n1", c)
+        val out = ConfigEditor.putNode(json, "steps", "a", "n1", c)
         val a = valid(out).step("a")!!
         val node = a.nodes["n1"] as Node.Choice
         assertEquals(listOf("Раз", "Два"), node.options.map { it.label })
@@ -142,7 +142,7 @@ class ConfigEditorTest {
 
     @Test
     fun `delete node makes dangling reference visible to validator`() {
-        val out = ConfigEditor.deleteNode(json, "a", "fail")
+        val out = ConfigEditor.deleteNode(json, "steps", "a", "fail")
         val v = ConfigValidator.validate(ConfigParser.parse(out))
         assertTrue(v.errors.any { it.contains("fail") })
     }
@@ -159,8 +159,8 @@ class ConfigEditorTest {
 
     @Test
     fun `new node id is free within the step`() {
-        assertEquals("n2", ConfigEditor.newNodeId(json, "a"))
-        assertEquals("n1", ConfigEditor.newNodeId(json, "missing"))
+        assertEquals("n2", ConfigEditor.newNodeId(json, "steps", "a"))
+        assertEquals("n1", ConfigEditor.newNodeId(json, "steps", "missing"))
     }
 
     @Test
@@ -168,7 +168,48 @@ class ConfigEditorTest {
         try { ConfigEditor.node("yesno", "Q?", "done", null, null, emptyList()); fail() } catch (_: ConfigException) { }
         try { ConfigEditor.node("instruction", " ", null, null, "done", emptyList()); fail() } catch (_: ConfigException) { }
         try { ConfigEditor.node("choice", "Q?", null, null, null, emptyList()); fail() } catch (_: ConfigException) { }
-        try { ConfigEditor.putNode(json, "a", "плохой", ConfigEditor.node("done", "", null, null, null, emptyList())); fail() } catch (_: ConfigException) { }
-        try { ConfigEditor.putNode(json, "nope", "n9", ConfigEditor.node("done", "", null, null, null, emptyList())); fail() } catch (_: ConfigException) { }
+        try { ConfigEditor.putNode(json, "steps", "a", "плохой", ConfigEditor.node("done", "", null, null, null, emptyList())); fail() } catch (_: ConfigException) { }
+        try { ConfigEditor.putNode(json, "steps", "nope", "n9", ConfigEditor.node("done", "", null, null, null, emptyList())); fail() } catch (_: ConfigException) { }
+    }
+
+    // ---------- Процессы ----------
+
+    @Test
+    fun `process lifecycle`() {
+        assertEquals("proc_1", ConfigEditor.newProcessId(json))
+        var out = ConfigEditor.insertProcess(json, ConfigEditor.ProcessFields("proc_1", "Свет"))
+        var c = valid(out)
+        assertEquals(1, c.processes.size)
+        assertEquals("Свет", c.processes[0].title)
+        assertEquals("n1", c.processes[0].start)
+        assertEquals("proc_2", ConfigEditor.newProcessId(out))
+
+        out = ConfigEditor.updateProcess(out, "proc_1", "Выключили свет")
+        assertEquals("Выключили свет", valid(out).processes[0].title)
+
+        val w = ConfigEditor.node("wait", "Ждём электрика", null, null, "done", emptyList(), button = "Пришёл")
+        out = ConfigEditor.putNode(out, "processes", "proc_1", "n2", w)
+        out = ConfigEditor.putNode(out, "processes", "proc_1", "n1", ConfigEditor.node("instruction", "Позвони", null, null, "n2", emptyList()))
+        c = valid(out)
+        assertTrue(c.processes[0].nodes["n2"] is Node.Wait)
+        assertEquals("n3", ConfigEditor.newNodeId(out, "processes", "proc_1"))
+
+        out = ConfigEditor.setStart(out, "proc_1", "n2")
+        assertEquals("n2", valid(out).processes[0].start)
+
+        out = ConfigEditor.deleteProcess(out, "proc_1")
+        assertTrue(valid(out).processes.isEmpty())
+        // Шаги при этом не тронуты.
+        assertEquals(listOf("a", "b", "c"), ids(out))
+    }
+
+    @Test
+    fun `wait in a step is rejected by validator, wait without button by builder`() {
+        val w = ConfigEditor.node("wait", "Жди", null, null, "done", emptyList(), button = "Дальше")
+        val out = ConfigEditor.putNode(json, "steps", "b", "n1", w)
+        assertTrue(ConfigValidator.validate(ConfigParser.parse(out)).errors.any { it.contains("wait") })
+        try { ConfigEditor.node("wait", "Жди", null, null, "done", emptyList(), button = " "); fail() } catch (_: ConfigException) { }
+        try { ConfigEditor.insertProcess(json, ConfigEditor.ProcessFields("ok", " ")); fail() } catch (_: ConfigException) { }
+        try { ConfigEditor.deleteProcess(json, "nope"); fail() } catch (_: ConfigException) { }
     }
 }

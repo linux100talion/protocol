@@ -8,6 +8,7 @@
     android:paddingTop="8dp">
 
     <TextView
+        android:id="@+id/yesLabel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="@string/tree_yes_root" />
@@ -18,6 +19,7 @@
         android:layout_height="48dp" />
 
     <TextView
+        android:id="@+id/noLabel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"

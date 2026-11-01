@@ -9,7 +9,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
-import android.widget.Button
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -63,7 +62,7 @@ class MainActivity : AppCompatActivity() {
             else if (ensurePermissions()) ReminderService.send(this, ReminderService.intent(this, ReminderService.ACTION_START))
         }
 
-        schedule = ScheduleSection(this, store, b.scheduleTable, b.editScheduleButton)
+        schedule = ScheduleSection(this, store, b.scheduleTable, b.editScheduleButton, b.processButtons, b.addProcessButton)
 
         EngineHolder.version.observe(this) { render() }
         // Поднять движок, чтобы главный экран знал состояние.
@@ -83,7 +82,6 @@ class MainActivity : AppCompatActivity() {
     private fun render() {
         val engine = EngineHolder.engine
         val err = EngineHolder.lastError
-        b.processButtons.removeAllViews()
         b.openProcesses.removeAllViews()
 
         when {
@@ -100,15 +98,6 @@ class MainActivity : AppCompatActivity() {
                 b.detailText.text = when {
                     st.activeStep != null -> getString(R.string.label_current_step, st.activeStep!!.stepId)
                     else -> engine.nextStepInfo()?.let { getString(R.string.label_next_step, it.first, it.second) } ?: ""
-                }
-                for (p in engine.config.processes) {
-                    b.processButtons.addView(Button(this).apply {
-                        text = p.title
-                        isEnabled = st.procs.none { it.procId == p.id }
-                        setOnClickListener {
-                            ReminderService.send(this@MainActivity, ReminderService.intent(this@MainActivity, ReminderService.ACTION_START_PROC).putExtra(ReminderService.EXTRA_PROC_ID, p.id))
-                        }
-                    })
                 }
                 // Открытые процессы идут прямо здесь, карточкой с вопросом и кнопками. SPEC 5.8.
                 drafts.keys.retainAll(st.procs.map { it.procId }.toSet())

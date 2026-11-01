@@ -69,6 +69,17 @@
     <string name="type_choice">Выбор варианта</string>
     <string name="type_done">Конец: шаг закрыт</string>
     <string name="type_fail">Тупик: остановка программы</string>
+    <string name="type_done_proc">Конец: процесс завершён</string>
+    <string name="type_fail_proc">Тупик: процесс не завершён, спросить причину</string>
+    <string name="type_wait">Ожидание с кнопкой</string>
+    <string name="tree_field_button">Надпись кнопки ожидания</string>
+    <string name="tree_start_root">Начало процесса</string>
+    <string name="proc_add">Добавить процесс</string>
+    <string name="proc_new">Новый процесс</string>
+    <string name="proc_edit">Правка процесса</string>
+    <string name="proc_field_title">Название кнопки</string>
+    <string name="proc_delete_confirm">Удалить процесс «%1$s»?</string>
+    <string name="proc_not_loaded">Процесс появится в движке после перезапуска программы</string>
     <string name="btn_save">Сохранить</string>
     <string name="btn_delete">Удалить</string>
     <string name="label_next_step">Следующий шаг: %1$s в %2$s</string>

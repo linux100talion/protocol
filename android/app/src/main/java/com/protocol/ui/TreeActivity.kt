@@ -15,7 +15,6 @@ import com.protocol.config.ConfigException
 import com.protocol.config.ConfigParser
 import com.protocol.config.ConfigStore
 import com.protocol.config.Node
-import com.protocol.config.Step
 import com.protocol.databinding.ActivityTreeBinding
 import com.protocol.databinding.DialogNodeBinding
 import com.protocol.databinding.DialogRootsBinding
@@ -23,35 +22,55 @@ import com.protocol.databinding.ItemNodeBinding
 import com.protocol.databinding.ItemOptionBinding
 
 /**
- * Подсказки шага: переходы с проверочного вопроса и узлы дерева (SPEC 4.5).
- * Узлы показаны в порядке обхода от «нет» и «да», недостижимые в конце.
+ * Подсказки шага или процесса: корни и узлы дерева (SPEC 4.5, 6.3).
+ * Узлы показаны в порядке обхода от корней, недостижимые в конце.
  * Карандаш включает режим правки: правка и удаление узлов, добавление,
- * смена переходов. Запись через ConfigSaver, проверка конфига целиком.
+ * смена корней. Запись через ConfigSaver, проверка конфига целиком.
  */
 class TreeActivity : AppCompatActivity() {
 
     companion object {
-        const val EXTRA_STEP_ID = "step_id"
+        const val EXTRA_KIND = "kind"      // ConfigEditor.STEPS или PROCESSES
+        const val EXTRA_ID = "id"
         const val EXTRA_EDIT = "edit"
 
-        fun open(ctx: Context, stepId: String, edit: Boolean) {
-            ctx.startActivity(Intent(ctx, TreeActivity::class.java).putExtra(EXTRA_STEP_ID, stepId).putExtra(EXTRA_EDIT, edit))
+        fun open(ctx: Context, kind: String, id: String, edit: Boolean) {
+            ctx.startActivity(
+                Intent(ctx, TreeActivity::class.java)
+                    .putExtra(EXTRA_KIND, kind).putExtra(EXTRA_ID, id).putExtra(EXTRA_EDIT, edit),
+            )
         }
 
-        private val TYPES = listOf("yesno", "instruction", "text", "choice", "done", "fail")
+        private val STEP_TYPES = listOf("yesno", "instruction", "text", "choice", "done", "fail")
+        private val PROC_TYPES = listOf("yesno", "instruction", "text", "choice", "wait", "done", "fail")
     }
+
+    /** Общий вид шага и процесса для этого экрана. */
+    private class Owner(
+        val title: String,
+        val subtitle: String,
+        val roots: List<String>,
+        val onYes: String?,
+        val onNo: String?,
+        val start: String?,
+        val nodes: Map<String, Node>,
+    )
 
     private lateinit var b: ActivityTreeBinding
     private lateinit var store: ConfigStore
-    private lateinit var stepId: String
+    private lateinit var kind: String
+    private lateinit var ownerId: String
     private var editMode = false
+    private val isStep: Boolean get() = kind == ConfigEditor.STEPS
+    private val types: List<String> get() = if (isStep) STEP_TYPES else PROC_TYPES
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         b = ActivityTreeBinding.inflate(layoutInflater)
         setContentView(b.root)
         store = ConfigStore(this)
-        stepId = intent.getStringExtra(EXTRA_STEP_ID) ?: run { finish(); return }
+        kind = intent.getStringExtra(EXTRA_KIND) ?: ConfigEditor.STEPS
+        ownerId = intent.getStringExtra(EXTRA_ID) ?: run { finish(); return }
         editMode = intent.getBooleanExtra(EXTRA_EDIT, false)
         b.editToggle.setOnClickListener { editMode = !editMode; render() }
         b.rootsEditButton.setOnClickListener { showRootsEditor() }
@@ -61,23 +80,29 @@ class TreeActivity : AppCompatActivity() {
 
     // ---------- Данные ----------
 
-    private fun current(): Pair<String, Step>? {
+    private fun current(): Pair<String, Owner>? {
         val text = store.configText ?: return null
         val config = try { ConfigParser.parse(text) } catch (_: ConfigException) { return null }
-        val step = config.step(stepId) ?: return null
-        return text to step
+        val owner = if (isStep) {
+            val s = config.step(ownerId) ?: return null
+            Owner(s.displayTitle, s.check, listOfNotNull(s.onNo, s.onYes), s.onYes, s.onNo, null, s.nodes)
+        } else {
+            val p = config.process(ownerId) ?: return null
+            Owner(p.title, "", listOf(p.start), null, null, p.start, p.nodes)
+        }
+        return text to owner
     }
 
-    private fun orderedIds(step: Step): List<String> {
+    private fun orderedIds(o: Owner): List<String> {
         val order = ArrayList<String>()
-        val queue = ArrayDeque(listOfNotNull(step.onNo, step.onYes))
+        val queue = ArrayDeque(o.roots)
         while (queue.isNotEmpty()) {
             val id = queue.removeFirst()
-            if (id in order || id !in step.nodes) continue
+            if (id in order || id !in o.nodes) continue
             order += id
-            step.nodes[id]?.targets()?.forEach { queue.addLast(it) }
+            o.nodes[id]?.targets()?.forEach { queue.addLast(it) }
         }
-        for (id in step.nodes.keys) if (id !in order) order += id
+        for (id in o.nodes.keys) if (id !in order) order += id
         return order
     }
 
@@ -96,8 +121,9 @@ class TreeActivity : AppCompatActivity() {
         "instruction" -> getString(R.string.type_instruction)
         "text" -> getString(R.string.type_text)
         "choice" -> getString(R.string.type_choice)
-        "done" -> getString(R.string.type_done)
-        "fail" -> getString(R.string.type_fail)
+        "wait" -> getString(R.string.type_wait)
+        "done" -> getString(if (isStep) R.string.type_done else R.string.type_done_proc)
+        "fail" -> getString(if (isStep) R.string.type_fail else R.string.type_fail_proc)
         else -> key
     }
 
@@ -114,22 +140,23 @@ class TreeActivity : AppCompatActivity() {
     // ---------- Экран ----------
 
     private fun render() {
-        val (_, step) = current() ?: run { finish(); return }
-        b.stepTitle.text = step.displayTitle
-        b.checkText.text = step.check
+        val (_, o) = current() ?: run { finish(); return }
+        b.stepTitle.text = o.title
+        b.checkText.text = o.subtitle
+        b.checkText.visibility = if (o.subtitle.isEmpty()) View.GONE else View.VISIBLE
         b.editToggle.alpha = if (editMode) 1f else 0.45f
         val vis = if (editMode) View.VISIBLE else View.GONE
         b.rootsEditButton.visibility = vis
         b.addNodeButton.visibility = vis
-        b.rootsText.text = buildString {
+        b.rootsText.text = if (isStep) buildString {
             append(getString(R.string.tree_yes_root)).append(": ")
-            append(step.onYes?.let { "узел $it" } ?: getString(R.string.tree_step_closed)).append('\n')
-            append(getString(R.string.tree_no_root)).append(": узел ").append(step.onNo)
-        }
+            append(o.onYes?.let { "узел $it" } ?: getString(R.string.tree_step_closed)).append('\n')
+            append(getString(R.string.tree_no_root)).append(": узел ").append(o.onNo)
+        } else "${getString(R.string.tree_start_root)}: узел ${o.start}"
 
         b.nodes.removeAllViews()
-        for (id in orderedIds(step)) {
-            val n = step.nodes[id] ?: continue
+        for (id in orderedIds(o)) {
+            val n = o.nodes[id] ?: continue
             val card = ItemNodeBinding.inflate(layoutInflater, b.nodes, false)
             card.headText.text = "$id · ${typeLabel(typeKey(n))}"
             card.bodyText.text = n.text
@@ -157,21 +184,34 @@ class TreeActivity : AppCompatActivity() {
     private fun selected(spinner: Spinner): String? = spinner.selectedItem as? String
 
     private fun showRootsEditor() {
-        val (text, step) = current() ?: return
-        val ids = step.nodes.keys.toList()
+        val (text, o) = current() ?: return
+        val ids = o.nodes.keys.toList()
         val d = DialogRootsBinding.inflate(layoutInflater)
         val yesIds = listOf(getString(R.string.tree_step_closed)) + ids
-        d.yesSpinner.adapter = targetAdapter(yesIds)
-        d.noSpinner.adapter = targetAdapter(ids)
-        select(d.yesSpinner, yesIds, step.onYes ?: yesIds[0])
-        select(d.noSpinner, ids, step.onNo)
+        if (isStep) {
+            d.yesSpinner.adapter = targetAdapter(yesIds)
+            d.noSpinner.adapter = targetAdapter(ids)
+            select(d.yesSpinner, yesIds, o.onYes ?: yesIds[0])
+            select(d.noSpinner, ids, o.onNo)
+        } else {
+            // У процесса один корень: показываем только второй спиннер под подписью «Начало».
+            d.yesLabel.visibility = View.GONE
+            d.yesSpinner.visibility = View.GONE
+            d.noLabel.text = getString(R.string.tree_start_root)
+            d.noSpinner.adapter = targetAdapter(ids)
+            select(d.noSpinner, ids, o.start)
+        }
         val dlg = AlertDialog.Builder(this).setTitle(R.string.tree_roots).setView(d.root)
             .setPositiveButton(R.string.btn_save, null).setNegativeButton(android.R.string.cancel, null).create()
         dlg.setOnShowListener {
             dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val onYes = if (d.yesSpinner.selectedItemPosition == 0) null else selected(d.yesSpinner)
                 val newText = try {
-                    ConfigEditor.setRoots(text, stepId, onYes, selected(d.noSpinner) ?: "")
+                    if (isStep) {
+                        val onYes = if (d.yesSpinner.selectedItemPosition == 0) null else selected(d.yesSpinner)
+                        ConfigEditor.setRoots(text, ownerId, onYes, selected(d.noSpinner) ?: "")
+                    } else {
+                        ConfigEditor.setStart(text, ownerId, selected(d.noSpinner) ?: "")
+                    }
                 } catch (e: ConfigException) { ConfigSaver.showError(this, e.message ?: "ошибка"); return@setOnClickListener }
                 if (ConfigSaver.apply(this, store, newText)) { dlg.dismiss(); render() }
             }
@@ -180,16 +220,17 @@ class TreeActivity : AppCompatActivity() {
     }
 
     private fun showNodeEditor(nodeId: String?) {
-        val (text, step) = current() ?: return
-        val existing = nodeId?.let { step.nodes[it] }
-        val ids = step.nodes.keys.toList()
+        val (text, o) = current() ?: return
+        val existing = nodeId?.let { o.nodes[it] }
+        val ids = o.nodes.keys.toList()
+        val types = types
         val d = DialogNodeBinding.inflate(layoutInflater)
 
-        d.typeSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, TYPES.map { typeLabel(it) })
+        d.typeSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, types.map { typeLabel(it) })
         d.yesSpinner.adapter = targetAdapter(ids)
         d.noSpinner.adapter = targetAdapter(ids)
         d.nextSpinner.adapter = targetAdapter(ids)
-        d.idInput.setText(nodeId ?: ConfigEditor.newNodeId(text, stepId))
+        d.idInput.setText(nodeId ?: ConfigEditor.newNodeId(text, kind, ownerId))
         d.idInput.isEnabled = nodeId == null
 
         val optionRows = ArrayList<ItemOptionBinding>()
@@ -206,31 +247,33 @@ class TreeActivity : AppCompatActivity() {
 
         fun showFieldsFor(type: String) {
             d.textInput.visibility = if (type == "done") View.GONE else View.VISIBLE
+            d.buttonInput.visibility = if (type == "wait") View.VISIBLE else View.GONE
             d.yesRow.visibility = if (type == "yesno") View.VISIBLE else View.GONE
             d.noRow.visibility = if (type == "yesno") View.VISIBLE else View.GONE
-            d.nextRow.visibility = if (type == "instruction" || type == "text") View.VISIBLE else View.GONE
+            d.nextRow.visibility = if (type == "instruction" || type == "text" || type == "wait") View.VISIBLE else View.GONE
             d.optionsBlock.visibility = if (type == "choice") View.VISIBLE else View.GONE
         }
         d.typeSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) = showFieldsFor(TYPES[position])
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) = showFieldsFor(types[position])
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
         // Заполнение из существующего узла.
         if (existing != null) {
             val key = typeKey(existing)
-            d.typeSpinner.setSelection(TYPES.indexOf(key).coerceAtLeast(0))
+            d.typeSpinner.setSelection(types.indexOf(key).coerceAtLeast(0))
             d.textInput.setText(existing.text)
             when (existing) {
                 is Node.YesNo -> { select(d.yesSpinner, ids, existing.yes); select(d.noSpinner, ids, existing.no) }
                 is Node.Instruction -> select(d.nextSpinner, ids, existing.next)
                 is Node.Text -> select(d.nextSpinner, ids, existing.next)
+                is Node.Wait -> { d.buttonInput.setText(existing.button); select(d.nextSpinner, ids, existing.next) }
                 is Node.Choice -> existing.options.forEach { addOptionRow(it.label, it.next) }
                 else -> {}
             }
             showFieldsFor(key)
         } else {
-            showFieldsFor(TYPES[0])
+            showFieldsFor(types[0])
         }
 
         val dlg = AlertDialog.Builder(this)
@@ -241,7 +284,7 @@ class TreeActivity : AppCompatActivity() {
             .create()
         dlg.setOnShowListener {
             dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val type = TYPES[d.typeSpinner.selectedItemPosition]
+                val type = types[d.typeSpinner.selectedItemPosition]
                 val newText = try {
                     val node = ConfigEditor.node(
                         type = type,
@@ -250,8 +293,9 @@ class TreeActivity : AppCompatActivity() {
                         no = selected(d.noSpinner),
                         next = selected(d.nextSpinner),
                         options = optionRows.map { it.labelInput.text.toString() to selected(it.nextSpinner) },
+                        button = d.buttonInput.text.toString(),
                     )
-                    ConfigEditor.putNode(text, stepId, d.idInput.text.toString(), node)
+                    ConfigEditor.putNode(text, kind, ownerId, d.idInput.text.toString(), node)
                 } catch (e: ConfigException) { ConfigSaver.showError(this, e.message ?: "ошибка"); return@setOnClickListener }
                 if (ConfigSaver.apply(this, store, newText)) { dlg.dismiss(); render() }
             }
@@ -265,7 +309,7 @@ class TreeActivity : AppCompatActivity() {
             .setMessage(getString(R.string.tree_delete_node_confirm, nodeId))
             .setPositiveButton(R.string.btn_delete) { _, _ ->
                 try {
-                    if (ConfigSaver.apply(this, store, ConfigEditor.deleteNode(text, stepId, nodeId))) render()
+                    if (ConfigSaver.apply(this, store, ConfigEditor.deleteNode(text, kind, ownerId, nodeId))) render()
                 } catch (e: ConfigException) { ConfigSaver.showError(this, e.message ?: "ошибка") }
             }
             .setNegativeButton(android.R.string.cancel, null)

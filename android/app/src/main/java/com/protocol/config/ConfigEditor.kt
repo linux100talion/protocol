@@ -12,6 +12,9 @@ import org.json.JSONObject
  */
 object ConfigEditor {
 
+    const val STEPS = "steps"
+    const val PROCESSES = "processes"
+
     /** Поля записи, которые правятся из таблицы. Пустые title и until убирают поле. */
     data class StepFields(
         val id: String,
@@ -52,35 +55,39 @@ object ConfigEditor {
 
     private val idRe = Regex("""^[A-Za-z0-9_]+$""")
 
-    // ---------- Узлы шага ----------
+    // ---------- Узлы шага или процесса ----------
 
-    /** Добавить или заменить узел шага. */
-    fun putNode(json: String, stepId: String, nodeId: String, node: JSONObject): String = editStep(json, stepId) { step ->
+    /** Добавить или заменить узел. kind: STEPS или PROCESSES, ownerId: id шага или процесса. */
+    fun putNode(json: String, kind: String, ownerId: String, nodeId: String, node: JSONObject): String = editOwner(json, kind, ownerId) { owner ->
         val id = nodeId.trim()
         if (!idRe.matches(id)) throw ConfigException("id узла должен быть из латиницы, цифр и _")
-        val nodes = step.optJSONObject("nodes") ?: JSONObject().also { step.put("nodes", it) }
+        val nodes = owner.optJSONObject("nodes") ?: JSONObject().also { owner.put("nodes", it) }
         nodes.put(id, node)
     }
 
-    fun deleteNode(json: String, stepId: String, nodeId: String): String = editStep(json, stepId) { step ->
-        step.optJSONObject("nodes")?.remove(nodeId)
+    fun deleteNode(json: String, kind: String, ownerId: String, nodeId: String): String = editOwner(json, kind, ownerId) { owner ->
+        owner.optJSONObject("nodes")?.remove(nodeId)
     }
 
-    /** Куда ведут ответы на проверочный вопрос. onYes == null: шаг сразу закрыт. */
-    fun setRoots(json: String, stepId: String, onYes: String?, onNo: String): String = editStep(json, stepId) { step ->
+    /** Куда ведут ответы на проверочный вопрос шага. onYes == null: шаг сразу закрыт. */
+    fun setRoots(json: String, stepId: String, onYes: String?, onNo: String): String = editOwner(json, STEPS, stepId) { step ->
         if (onYes.isNullOrBlank()) step.remove("on_yes") else step.put("on_yes", onYes)
         if (onNo.isBlank()) throw ConfigException("Ответ «нет» должен вести в узел")
         step.put("on_no", onNo)
     }
 
-    /** Свободный id узла вида nN. */
-    fun newNodeId(json: String, stepId: String): String {
+    /** Стартовый узел процесса. */
+    fun setStart(json: String, procId: String, start: String): String = editOwner(json, PROCESSES, procId) { proc ->
+        if (start.isBlank()) throw ConfigException("Начало процесса должно вести в узел")
+        proc.put("start", start)
+    }
+
+    /** Свободный id узла вида nN внутри шага или процесса. */
+    fun newNodeId(json: String, kind: String, ownerId: String): String {
         val ids = HashSet<String>()
         try {
-            val arr = JSONObject(json).optJSONArray("steps") ?: JSONArray()
-            for (i in 0 until arr.length()) {
-                val st = arr.getJSONObject(i)
-                if (st.optString("id") == stepId) st.optJSONObject("nodes")?.keys()?.forEach { ids += it }
+            for (o in list(JSONObject(json), kind, required = false)) {
+                if (o.optString("id") == ownerId) o.optJSONObject("nodes")?.keys()?.forEach { ids += it }
             }
         } catch (_: JSONException) { }
         var n = 1
@@ -89,7 +96,15 @@ object ConfigEditor {
     }
 
     /** Собрать JSON узла по полям диалога с проверкой обязательных полей (SPEC 4.5). */
-    fun node(type: String, text: String, yes: String?, no: String?, next: String?, options: List<Pair<String, String?>>): JSONObject {
+    fun node(
+        type: String,
+        text: String,
+        yes: String?,
+        no: String?,
+        next: String?,
+        options: List<Pair<String, String?>>,
+        button: String? = null,
+    ): JSONObject {
         val o = JSONObject().put("type", type)
         val t = text.trim()
         fun needText() { if (t.isEmpty()) throw ConfigException("Текст узла не может быть пустым"); o.put("text", t) }
@@ -111,6 +126,13 @@ object ConfigEditor {
                 }
                 o.put("options", arr)
             }
+            "wait" -> {
+                needText()
+                val btn = button?.trim().orEmpty()
+                if (btn.isEmpty()) throw ConfigException("У ожидания должна быть надпись кнопки")
+                o.put("button", btn)
+                o.put("next", target(next, "Далее"))
+            }
             "done" -> { }
             "fail" -> needText()
             else -> throw ConfigException("Неизвестный тип узла \"$type\"")
@@ -118,32 +140,100 @@ object ConfigEditor {
         return o
     }
 
-    private fun editStep(json: String, stepId: String, change: (JSONObject) -> Unit): String = edit(json) { steps ->
-        val step = steps.firstOrNull { it.optString("id") == stepId } ?: throw ConfigException("Шаг \"$stepId\" не найден")
-        change(step)
+    // ---------- Процессы ----------
+
+    data class ProcessFields(val id: String, val title: String)
+
+    /** Новый процесс в конец списка с минимальным деревом: инструкция → done. */
+    fun insertProcess(json: String, f: ProcessFields): String = editProcesses(json) { procs ->
+        val id = f.id.trim()
+        if (!idRe.matches(id)) throw ConfigException("id должен быть из латиницы, цифр и _")
+        val title = f.title.trim()
+        if (title.isEmpty()) throw ConfigException("Название процесса не может быть пустым")
+        procs += JSONObject().put("id", id).put("title", title).put("start", "n1").put(
+            "nodes",
+            JSONObject()
+                .put("n1", JSONObject().put("type", "instruction").put("text", "Сделай это.").put("next", "done"))
+                .put("done", JSONObject().put("type", "done")),
+        )
     }
 
-    private fun edit(json: String, change: (MutableList<JSONObject>) -> Unit): String {
+    fun updateProcess(json: String, procId: String, title: String): String = editOwner(json, PROCESSES, procId) { proc ->
+        val t = title.trim()
+        if (t.isEmpty()) throw ConfigException("Название процесса не может быть пустым")
+        proc.put("title", t)
+    }
+
+    fun deleteProcess(json: String, procId: String): String = editProcesses(json) { procs ->
+        if (!procs.removeAll { it.optString("id") == procId }) throw ConfigException("Процесс \"$procId\" не найден")
+    }
+
+    /** Свободный id процесса вида proc_N. */
+    fun newProcessId(json: String): String {
+        val ids = HashSet<String>()
+        try { for (o in list(JSONObject(json), PROCESSES, required = false)) ids += o.optString("id", "") } catch (_: JSONException) { }
+        var n = 1
+        while ("proc_$n" in ids) n++
+        return "proc_$n"
+    }
+
+
+    private fun editRoot(json: String, change: (JSONObject) -> Unit): String {
         val root = try {
             JSONObject(json)
         } catch (e: JSONException) {
             throw ConfigException("JSON не разбирается: ${e.message}")
         }
-        val arr = root.optJSONArray("steps") ?: throw ConfigException("Нет массива steps")
-        val steps = (0 until arr.length()).mapTo(ArrayList()) { arr.getJSONObject(it) }
-        change(steps)
+        change(root)
+        sortSteps(root)
+        return root.toString(2)
+    }
 
-        // Порядок по времени внутри цикла. Сортировка устойчивая: записи с одним
-        // временем остаются в прежнем порядке, сдвигается только изменённая.
+    private fun list(root: JSONObject, key: String, required: Boolean): MutableList<JSONObject> {
+        val arr = root.optJSONArray(key) ?: if (required) throw ConfigException("Нет массива $key") else JSONArray()
+        return (0 until arr.length()).mapTo(ArrayList()) { arr.getJSONObject(it) }
+    }
+
+    private fun store(root: JSONObject, key: String, items: List<JSONObject>) {
+        val out = JSONArray()
+        for (o in items) out.put(o)
+        root.put(key, out)
+    }
+
+    /** Правка списка шагов. */
+    private fun edit(json: String, change: (MutableList<JSONObject>) -> Unit): String = editRoot(json) { root ->
+        val steps = list(root, STEPS, required = true)
+        change(steps)
+        store(root, STEPS, steps)
+    }
+
+    /** Правка списка процессов. */
+    private fun editProcesses(json: String, change: (MutableList<JSONObject>) -> Unit): String = editRoot(json) { root ->
+        val procs = list(root, PROCESSES, required = false)
+        change(procs)
+        store(root, PROCESSES, procs)
+    }
+
+    /** Правка одного шага или процесса по id. */
+    private fun editOwner(json: String, kind: String, id: String, change: (JSONObject) -> Unit): String = editRoot(json) { root ->
+        val o = list(root, kind, required = true).firstOrNull { it.optString("id") == id }
+            ?: throw ConfigException("${if (kind == STEPS) "Шаг" else "Процесс"} \"$id\" не найден")
+        change(o)
+    }
+
+    /**
+     * Порядок шагов по времени внутри цикла. Сортировка устойчивая: записи с
+     * одним временем остаются в прежнем порядке, сдвигается только изменённая.
+     */
+    private fun sortSteps(root: JSONObject) {
+        val arr = root.optJSONArray(STEPS) ?: return
         val dayStart = ConfigParser.parseTime(root.optString("day_start", ""), "day_start")
+        val steps = (0 until arr.length()).map { arr.getJSONObject(it) }
         val sorted = steps.sortedBy { s ->
             val t = ConfigParser.parseTime(s.optString("time", ""), "шаг \"${s.optString("id")}\": time")
             ((t - dayStart) % 1440 + 1440) % 1440
         }
-        val out = JSONArray()
-        for (s in sorted) out.put(s)
-        root.put("steps", out)
-        return root.toString(2)
+        store(root, STEPS, sorted)
     }
 
     private fun fill(o: JSONObject, f: StepFields, isNew: Boolean) {
