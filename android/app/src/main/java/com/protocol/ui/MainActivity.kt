@@ -10,16 +10,16 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Button
-import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.widget.doAfterTextChanged
 import com.protocol.R
 import com.protocol.config.ConfigStore
 import com.protocol.databinding.ActivityMainBinding
+import com.protocol.databinding.ItemProcessBinding
 import com.protocol.engine.Mode
-import com.protocol.engine.RunState
 import com.protocol.service.EngineHolder
 import com.protocol.service.ReminderService
 
@@ -27,6 +27,8 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var b: ActivityMainBinding
     private lateinit var store: ConfigStore
+    /** Недописанные ответы по процессам: карточки перерисовываются при каждом такте движка. */
+    private val drafts = HashMap<String, String>()
 
     private val pickConfig = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@registerForActivityResult
@@ -87,23 +89,23 @@ class MainActivity : AppCompatActivity() {
                 for (p in engine.config.processes) {
                     b.processButtons.addView(Button(this).apply {
                         text = p.title
+                        isEnabled = st.procs.none { it.procId == p.id }
                         setOnClickListener {
                             ReminderService.send(this@MainActivity, ReminderService.intent(this@MainActivity, ReminderService.ACTION_START_PROC).putExtra(ReminderService.EXTRA_PROC_ID, p.id))
-                            startActivity(Intent(this@MainActivity, StepActivity::class.java).putExtra(StepActivity.EXTRA_PROC_ID, p.id))
                         }
                     })
                 }
+                // Открытые процессы идут прямо здесь, карточкой с вопросом и кнопками. SPEC 5.8.
+                drafts.keys.retainAll(st.procs.map { it.procId }.toSet())
                 for (run in st.procs) {
-                    val title = engine.config.process(run.procId)?.title ?: run.procId
-                    val suffix = if (run.state == RunState.WAITING) " (ожидание)" else ""
-                    b.openProcesses.addView(TextView(this).apply {
-                        text = "$title$suffix: ${run.nodeId}"
-                        textSize = 16f
-                        setPadding(0, 12, 0, 12)
-                        setOnClickListener {
-                            startActivity(Intent(this@MainActivity, StepActivity::class.java).putExtra(StepActivity.EXTRA_PROC_ID, run.procId))
-                        }
-                    })
+                    val scr = engine.procScreen(run.procId) ?: continue
+                    val card = ItemProcessBinding.inflate(layoutInflater, b.openProcesses, false)
+                    card.titleText.text = scr.title
+                    card.questionText.text = scr.text
+                    ScreenBinder.bind(this, scr, run.procId, card.answerInput, card.buttons, large = false)
+                    card.answerInput.setText(drafts[run.procId] ?: "")
+                    card.answerInput.doAfterTextChanged { drafts[run.procId] = it?.toString() ?: "" }
+                    b.openProcesses.addView(card.root)
                 }
             }
         }

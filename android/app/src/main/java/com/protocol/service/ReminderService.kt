@@ -227,23 +227,25 @@ class ReminderService : Service() {
         }
         nm.notify(Notifications.ID_SERVICE, Notifications.service(this, serviceText))
 
-        // Активный экран: шаг в приоритете, иначе первый активный процесс.
+        // Шаг по графику: полноэкранное уведомление и экран поверх блокировки.
+        // Процессы отдельного экрана не получают, они идут на главном экране;
+        // активному процессу достаётся тихое уведомление, ведущее на главный экран.
         val stepScreen = e.stepScreen()
         val activeProc = if (stepScreen == null) st.procs.firstOrNull { it.state != RunState.WAITING } else null
         val procScreen = activeProc?.let { e.procScreen(it.procId) }
         val screen: Screen? = stepScreen ?: procScreen
         if (screen != null) {
             nm.notify(Notifications.ID_ALERT, Notifications.alert(this, screen, activeProc?.procId))
-            // Экран поверх блокировки. Если система запретит запуск из фона,
-            // сработает fullScreenIntent уведомления.
+        } else {
+            nm.cancel(Notifications.ID_ALERT)
+        }
+        if (stepScreen != null) {
+            // Если система запретит запуск из фона, сработает fullScreenIntent уведомления.
             try {
                 startActivity(Intent(this, StepActivity::class.java).apply {
-                    activeProc?.let { putExtra(StepActivity.EXTRA_PROC_ID, it.procId) }
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 })
             } catch (_: Exception) { }
-        } else {
-            nm.cancel(Notifications.ID_ALERT)
         }
 
         // Ожидающие процессы: тихие уведомления с кнопкой.

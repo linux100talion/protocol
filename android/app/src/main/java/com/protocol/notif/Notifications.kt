@@ -49,13 +49,17 @@ object Notifications {
             .setContentIntent(mainIntent(ctx))
             .build()
 
-    /** Уведомление активного шага или процесса. Нельзя смахнуть, полноэкранное. */
+    /**
+     * Уведомление активного шага или процесса. Нельзя смахнуть.
+     * Шаг (procId == null): полноэкранное, открывает экран шага.
+     * Процесс: обычное, открывает главный экран, где процесс и идёт.
+     */
     fun alert(ctx: Context, screen: Screen, procId: String?): Notification {
-        val open = Intent(ctx, StepActivity::class.java).apply {
-            procId?.let { putExtra(StepActivity.EXTRA_PROC_ID, it) }
+        val isStep = procId == null
+        val open = Intent(ctx, if (isStep) StepActivity::class.java else MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
-        val fullScreen = PendingIntent.getActivity(ctx, 10, open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val pi = PendingIntent.getActivity(ctx, 10, open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val b = NotificationCompat.Builder(ctx, CH_ALERT)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(screen.title)
@@ -63,11 +67,11 @@ object Notifications {
             .setStyle(NotificationCompat.BigTextStyle().bigText(screen.text))
             .setOngoing(true)
             .setAutoCancel(false)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setCategory(if (isStep) NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_REMINDER)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setContentIntent(fullScreen)
-            .setFullScreenIntent(fullScreen, true)
+            .setContentIntent(pi)
+        if (isStep) b.setFullScreenIntent(pi, true)
         if (screen is Screen.YesNo) {
             b.addAction(0, ctx.getString(R.string.btn_yes), action(ctx, NotificationActionReceiver.ACTION_YES, procId, 11))
             b.addAction(0, ctx.getString(R.string.btn_no), action(ctx, NotificationActionReceiver.ACTION_NO, procId, 12))
@@ -76,10 +80,7 @@ object Notifications {
     }
 
     fun wait(ctx: Context, procId: String, screen: Screen.Wait): Notification {
-        val open = Intent(ctx, StepActivity::class.java).apply {
-            putExtra(StepActivity.EXTRA_PROC_ID, procId)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        }
+        val open = Intent(ctx, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
         val pi = PendingIntent.getActivity(ctx, waitId(procId), open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(ctx, CH_WAIT)
             .setSmallIcon(R.drawable.ic_notification)
