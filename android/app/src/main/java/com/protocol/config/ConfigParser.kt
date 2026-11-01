@@ -56,6 +56,8 @@ object ConfigParser {
             onYes = o.optString("on_yes", "").ifEmpty { null },
             onNo = req(o, "on_no", w),
             nodes = nodes,
+            title = o.optString("title", "").trim().ifEmpty { null },
+            untilMin = o.optString("until", "").trim().ifEmpty { null }?.let { parseTime(it, "$w: until") },
         )
     }
 

@@ -1,0 +1,168 @@
+package com.protocol.ui
+
+import android.view.View
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import com.protocol.R
+import com.protocol.config.Config
+import com.protocol.config.ConfigEditor
+import com.protocol.config.ConfigException
+import com.protocol.config.ConfigParser
+import com.protocol.config.ConfigStore
+import com.protocol.config.ConfigValidator
+import com.protocol.config.Step
+import com.protocol.config.formatHHMM
+import com.protocol.databinding.DialogStepBinding
+import com.protocol.databinding.ItemStepBinding
+
+/**
+ * Таблица протокола на главном экране: шаги основного конфига строками
+ * «время, название». Нажатие на название показывает подсказку. Карандаш в
+ * заголовке включает режим правки: у каждой строки появляются «+»
+ * (вставить ниже), карандаш (править) и корзина (удалить). SPEC 6.1.
+ *
+ * Правки пишутся прямо в файл конфига через ConfigEditor. Вложенные узлы
+ * (вопросы после «нет») здесь не редактируются.
+ */
+class ScheduleSection(
+    private val activity: AppCompatActivity,
+    private val store: ConfigStore,
+    private val table: LinearLayout,
+    private val editToggle: ImageButton,
+    private val onSaved: () -> Unit,
+) {
+    private var editMode = false
+    private var cachedText: String? = null
+    private var cachedConfig: Config? = null
+
+    init {
+        editToggle.setOnClickListener { editMode = !editMode; render() }
+    }
+
+    fun render() {
+        table.removeAllViews()
+        val text = currentText()
+        val config = text?.let { parse(it) }
+        editToggle.visibility = if (config == null) View.GONE else View.VISIBLE
+        editToggle.alpha = if (editMode) 1f else 0.45f
+        if (text == null || config == null) return
+
+        config.steps.forEachIndexed { i, s ->
+            val row = ItemStepBinding.inflate(activity.layoutInflater, table, false)
+            row.timeText.text = timeLabel(s)
+            row.titleText.text = s.displayTitle
+            row.titleText.setOnClickListener { showHint(config, s) }
+            row.actions.visibility = if (editMode) View.VISIBLE else View.GONE
+            row.addButton.setOnClickListener { showEditor(text, config, i, insert = true) }
+            row.editButton.setOnClickListener { showEditor(text, config, i, insert = false) }
+            row.deleteButton.setOnClickListener { confirmDelete(text, s, i) }
+            table.addView(row.root)
+        }
+    }
+
+    // ---------- Данные ----------
+
+    /** Текст конфига из копии в ConfigStore: она обновляется при чтении файла и при сохранении. */
+    private fun currentText(): String? {
+        if (store.configUri == null) return null
+        return store.configText ?: run { store.reload(); store.configText }
+    }
+
+    private fun parse(text: String): Config? {
+        if (text == cachedText) return cachedConfig
+        cachedText = text
+        cachedConfig = try { ConfigParser.parse(text) } catch (_: ConfigException) { null }
+        return cachedConfig
+    }
+
+    private fun timeLabel(s: Step): String =
+        if (s.untilMin != null) "${formatHHMM(s.timeMin)} - ${formatHHMM(s.untilMin)}" else formatHHMM(s.timeMin)
+
+    // ---------- Подсказка ----------
+
+    private fun showHint(config: Config, s: Step) {
+        val t = config.timeouts
+        val msg = buildString {
+            append("Время: ").append(timeLabel(s)).append('\n')
+            append("Вопрос: ").append(s.check).append('\n')
+            append("Если забыл: ").append(s.forgot).append("\n\n")
+            append("Ответ «да»: ").append(if (s.onYes == null) "шаг закрыт" else "продолжение в узле «${s.onYes}»").append('\n')
+            append("Ответ «нет»: подсказки с узла «${s.onNo}», всего узлов ${s.nodes.size}").append("\n\n")
+            append("Повтор сигнала каждые ${t.repeatSec} с, через ${t.escalateMin} мин текст меняется на «забыл», ")
+            append("через ${t.closeMin} мин без ответа программа останавливается.\n")
+            append("id в логе: ").append(s.id)
+        }
+        AlertDialog.Builder(activity).setTitle(s.displayTitle).setMessage(msg)
+            .setPositiveButton(android.R.string.ok, null).show()
+    }
+
+    // ---------- Правка ----------
+
+    private fun showEditor(text: String, config: Config, index: Int, insert: Boolean) {
+        val d = DialogStepBinding.inflate(activity.layoutInflater)
+        val step = if (insert) null else config.steps[index]
+        val anchor = config.steps[index]
+        d.idInput.setText(step?.id ?: ConfigEditor.newId(text))
+        d.idInput.isEnabled = insert
+        d.titleInput.setText(step?.title ?: "")
+        d.timeInput.setText(formatHHMM(step?.timeMin ?: anchor.timeMin))
+        d.untilInput.setText(step?.untilMin?.let { formatHHMM(it) } ?: "")
+        d.checkInput.setText(step?.check ?: "")
+        d.forgotInput.setText(step?.forgot ?: "")
+
+        val dlg = AlertDialog.Builder(activity)
+            .setTitle(if (insert) R.string.sched_new_step else R.string.sched_edit_step)
+            .setView(d.root)
+            .setPositiveButton(R.string.btn_save, null)
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        dlg.setOnShowListener {
+            // Кнопка не закрывает диалог сама: при ошибке введённое остаётся.
+            dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val f = ConfigEditor.StepFields(
+                    id = d.idInput.text.toString(),
+                    title = d.titleInput.text.toString(),
+                    time = d.timeInput.text.toString(),
+                    until = d.untilInput.text.toString(),
+                    check = d.checkInput.text.toString(),
+                    forgot = d.forgotInput.text.toString(),
+                )
+                val newText = try {
+                    if (insert) ConfigEditor.insertAfter(text, index, f) else ConfigEditor.update(text, index, f)
+                } catch (e: ConfigException) {
+                    showError(e.message ?: "ошибка"); return@setOnClickListener
+                }
+                if (apply(newText)) dlg.dismiss()
+            }
+        }
+        dlg.show()
+    }
+
+    private fun confirmDelete(text: String, s: Step, index: Int) {
+        AlertDialog.Builder(activity)
+            .setMessage(activity.getString(R.string.sched_delete_confirm, s.displayTitle))
+            .setPositiveButton(R.string.btn_delete) { _, _ ->
+                try { apply(ConfigEditor.delete(text, index)) } catch (e: ConfigException) { showError(e.message ?: "ошибка") }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /** Проверить новый текст целиком, записать в файл, перерисовать. */
+    private fun apply(newText: String): Boolean {
+        val config = try { ConfigParser.parse(newText) } catch (e: ConfigException) { showError(e.message ?: "ошибка"); return false }
+        val v = ConfigValidator.validate(config)
+        if (!v.ok) { showError(v.errors.joinToString("\n")); return false }
+        store.save(newText)?.let { showError(it); return false }
+        render()
+        onSaved()
+        return true
+    }
+
+    private fun showError(msg: String) {
+        AlertDialog.Builder(activity).setTitle(R.string.sched_error).setMessage(msg)
+            .setPositiveButton(android.R.string.ok, null).show()
+    }
+}

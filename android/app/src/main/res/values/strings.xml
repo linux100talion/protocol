@@ -28,6 +28,23 @@
 
     <string name="label_processes">Процессы</string>
     <string name="label_open_processes">Открытые процессы</string>
+    <string name="label_schedule">Протокол</string>
+    <string name="sched_edit_mode">Режим правки</string>
+    <string name="sched_add_below">Добавить запись ниже</string>
+    <string name="sched_new_step">Новая запись</string>
+    <string name="sched_edit_step">Правка записи</string>
+    <string name="sched_field_title">Название события</string>
+    <string name="sched_field_time">Время, ЧЧ:ММ</string>
+    <string name="sched_field_until">До, ЧЧ:ММ (можно пусто)</string>
+    <string name="sched_field_check">Проверочный вопрос</string>
+    <string name="sched_field_forgot">Текст, если забыл</string>
+    <string name="sched_field_id">id для лога, латиница</string>
+    <string name="sched_delete_confirm">Удалить запись «%1$s»?</string>
+    <string name="sched_saved">Протокол сохранён</string>
+    <string name="sched_saved_running">Протокол сохранён. Программа работает по старому до «Остановить» и «Запустить».</string>
+    <string name="sched_error">Не сохранено</string>
+    <string name="btn_save">Сохранить</string>
+    <string name="btn_delete">Удалить</string>
     <string name="label_next_step">Следующий шаг: %1$s в %2$s</string>
     <string name="label_current_step">Текущий шаг: %1$s</string>
 

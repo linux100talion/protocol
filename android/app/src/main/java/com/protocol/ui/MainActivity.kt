@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Button
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -29,10 +30,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var store: ConfigStore
     /** Недописанные ответы по процессам: карточки перерисовываются при каждом такте движка. */
     private val drafts = HashMap<String, String>()
+    private lateinit var schedule: ScheduleSection
 
     private val pickConfig = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@registerForActivityResult
-        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        // Запись нужна таблице протокола: правки пишутся в этот же файл.
+        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         store.configUri = uri
         checkConfig()
         ReminderService.send(this, ReminderService.intent(this, ReminderService.ACTION_INIT))
@@ -53,6 +56,13 @@ class MainActivity : AppCompatActivity() {
             val running = EngineHolder.engine?.state?.mode == Mode.RUNNING
             if (running) ReminderService.send(this, ReminderService.intent(this, ReminderService.ACTION_MANUAL_STOP))
             else if (ensurePermissions()) ReminderService.send(this, ReminderService.intent(this, ReminderService.ACTION_START))
+        }
+
+        schedule = ScheduleSection(this, store, b.scheduleTable, b.editScheduleButton) {
+            // Файл изменён. Движок не в работе перечитает его сразу, работающий: после перезапуска.
+            val running = EngineHolder.engine?.state?.mode == Mode.RUNNING
+            ReminderService.send(this, ReminderService.intent(this, ReminderService.ACTION_RELOAD))
+            Toast.makeText(this, if (running) R.string.sched_saved_running else R.string.sched_saved, Toast.LENGTH_LONG).show()
         }
 
         EngineHolder.version.observe(this) { render() }
@@ -109,6 +119,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        schedule.render()
         b.startStopButton.isEnabled = store.configUri != null && err == null
         b.startStopButton.text = getString(if (engine?.state?.mode == Mode.RUNNING) R.string.btn_stop else R.string.btn_start)
     }

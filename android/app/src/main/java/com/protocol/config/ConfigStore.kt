@@ -42,6 +42,25 @@ class ConfigStore(context: Context) {
         return parseAndValidate(text).also { if (it is LoadResult.Ok) configText = text }
     }
 
+    /**
+     * Записать новый текст в файл конфига и обновить копию.
+     * Возвращает текст ошибки или null. Текст должен быть уже проверен.
+     */
+    fun save(text: String): String? {
+        val uri = configUri ?: return "Конфиг не выбран"
+        return try {
+            val out = ctx.contentResolver.openOutputStream(uri, "wt")
+                ?: return "Файл конфига не открывается на запись"
+            out.use { it.write(text.toByteArray(Charsets.UTF_8)) }
+            configText = text
+            null
+        } catch (e: SecurityException) {
+            "Нет доступа на запись. Выберите файл заново через «Выбрать конфиг»."
+        } catch (e: Exception) {
+            "Файл не записан: ${e.message}"
+        }
+    }
+
     /** Загрузить последнюю копию без обращения к файлу (после перезагрузки). */
     fun loadCached(): LoadResult {
         val text = configText ?: return reload()

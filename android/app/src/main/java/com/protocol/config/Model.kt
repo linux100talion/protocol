@@ -33,7 +33,13 @@ data class Step(
     val onYes: String?,
     val onNo: String,
     val nodes: Map<String, Node>,
+    /** Название события для таблицы на главном экране. Без него показывается check. */
+    val title: String? = null,
+    /** Конец интервала «time - until». Только для отображения, движок не использует. */
+    val untilMin: Int? = null,
 ) {
+    val displayTitle: String get() = title ?: check
+
     /** Смещение от начала цикла в минутах, 0..1439. */
     fun offsetMin(dayStartMin: Int): Int = ((timeMin - dayStartMin) % 1440 + 1440) % 1440
 }

@@ -33,6 +33,7 @@ class ReminderService : Service() {
 
     companion object {
         const val ACTION_INIT = "init"            // поднять движок без запуска программы
+        const val ACTION_RELOAD = "reload"        // конфиг изменён с главного экрана
         const val ACTION_START = "start"          // «Запустить»
         const val ACTION_MANUAL_STOP = "manual_stop"
         const val ACTION_TICK = "tick"
@@ -110,6 +111,12 @@ class ReminderService : Service() {
                 }
             }
             ACTION_START_PROC -> i.getStringExtra(EXTRA_PROC_ID)?.let { e.startProcess(it, now) }
+            ACTION_RELOAD -> if (e.state.mode != Mode.RUNNING) {
+                // Не в работе: пересобрать движок на новом конфиге, состояние (открытые
+                // процессы) сохраняется. В работе конфиг перечитается на «Запустить» (SPEC 5.1).
+                engine = null
+                if (!loadEngine(fromFile = false)) { stopSelf(); return START_NOT_STICKY }
+            }
             ACTION_REASON -> e.submitReason(
                 i.getBooleanExtra(EXTRA_IS_STEP, true),
                 i.getStringExtra(EXTRA_ID) ?: "",
