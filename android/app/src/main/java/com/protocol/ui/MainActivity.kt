@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -43,6 +44,19 @@ class MainActivity : AppCompatActivity() {
 
     private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    /** Копия текущего конфига в файл по выбору пользователя (SPEC 6.1). */
+    private val exportConfig = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
+        if (uri == null) return@registerForActivityResult
+        val text = store.configText ?: run { checkConfig(); return@registerForActivityResult }
+        try {
+            contentResolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray(Charsets.UTF_8)) }
+                ?: throw IllegalStateException("файл не открывается")
+            Toast.makeText(this, R.string.export_done, Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, getString(R.string.export_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         b = ActivityMainBinding.inflate(layoutInflater)
@@ -55,6 +69,11 @@ class MainActivity : AppCompatActivity() {
 
         b.pickConfigButton.setOnClickListener { pickConfig.launch(arrayOf("application/json", "text/*", "application/octet-stream")) }
         b.checkConfigButton.setOnClickListener { checkConfig() }
+        b.exportConfigButton.setOnClickListener {
+            // Текст берётся из последней прочитанной копии; перед этим перечитать файл.
+            if (store.configUri != null) store.reload()
+            exportConfig.launch("protocol-config-${java.time.LocalDate.now()}.json")
+        }
         b.logsButton.setOnClickListener { startActivity(Intent(this, LogsActivity::class.java)) }
         b.startStopButton.setOnClickListener {
             val running = EngineHolder.engine?.state?.mode == Mode.RUNNING

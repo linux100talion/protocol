@@ -19,6 +19,9 @@
     <string name="btn_stop">Остановить вручную</string>
     <string name="btn_pick_config">Выбрать конфиг</string>
     <string name="btn_check_config">Проверить конфиг</string>
+    <string name="btn_export_config">Сохранить конфиг в файл</string>
+    <string name="export_done">Конфиг сохранён в файл</string>
+    <string name="export_failed">Не удалось сохранить: %1$s</string>
     <string name="btn_logs">Логи</string>
     <string name="btn_yes">Да</string>
     <string name="btn_no">Нет</string>

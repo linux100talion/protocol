@@ -70,6 +70,13 @@
             android:text="@string/btn_pick_config" />
 
         <Button
+            android:id="@+id/exportConfigButton"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/btn_export_config" />
+
+        <Button
             android:id="@+id/checkConfigButton"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
