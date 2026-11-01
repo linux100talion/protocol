@@ -26,6 +26,8 @@ import com.protocol.service.ReminderService
 
 class MainActivity : AppCompatActivity() {
 
+    private companion object { const val KEY_CONTROLS_OPEN = "controls_open" }
+
     private lateinit var b: ActivityMainBinding
     private lateinit var store: ConfigStore
     /** Недописанные ответы по процессам: карточки перерисовываются при каждом такте движка. */
@@ -48,6 +50,10 @@ class MainActivity : AppCompatActivity() {
         b = ActivityMainBinding.inflate(layoutInflater)
         setContentView(b.root)
         store = ConfigStore(this)
+
+        // Панель кнопок свёрнута по умолчанию, состояние запоминается.
+        b.controlsHeader.setOnClickListener { setControlsOpen(!prefs.getBoolean(KEY_CONTROLS_OPEN, false)) }
+        setControlsOpen(prefs.getBoolean(KEY_CONTROLS_OPEN, false))
 
         b.pickConfigButton.setOnClickListener { pickConfig.launch(arrayOf("application/json", "text/*", "application/octet-stream")) }
         b.checkConfigButton.setOnClickListener { checkConfig() }
@@ -122,6 +128,14 @@ class MainActivity : AppCompatActivity() {
         schedule.render()
         b.startStopButton.isEnabled = store.configUri != null && err == null
         b.startStopButton.text = getString(if (engine?.state?.mode == Mode.RUNNING) R.string.btn_stop else R.string.btn_start)
+    }
+
+    private val prefs by lazy { getSharedPreferences("ui", MODE_PRIVATE) }
+
+    private fun setControlsOpen(open: Boolean) {
+        prefs.edit().putBoolean(KEY_CONTROLS_OPEN, open).apply()
+        b.controlsPanel.visibility = if (open) android.view.View.VISIBLE else android.view.View.GONE
+        b.controlsArrow.setImageResource(if (open) android.R.drawable.arrow_up_float else android.R.drawable.arrow_down_float)
     }
 
     private fun checkConfig() {

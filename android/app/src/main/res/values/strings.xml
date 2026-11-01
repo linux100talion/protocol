@@ -26,6 +26,7 @@
     <string name="btn_answer">Ответить</string>
     <string name="btn_share">Поделиться</string>
 
+    <string name="label_controls">Управление</string>
     <string name="label_processes">Процессы</string>
     <string name="label_open_processes">Открытые процессы</string>
     <string name="label_schedule">Протокол</string>

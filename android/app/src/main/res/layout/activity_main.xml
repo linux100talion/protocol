@@ -23,11 +23,43 @@
             android:layout_marginTop="8dp"
             android:textAppearance="?attr/textAppearanceBodyLarge" />
 
+        <!-- Кнопки управления свёрнуты в панель со стрелкой. -->
+        <LinearLayout
+            android:id="@+id/controlsHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="?attr/selectableItemBackground">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:text="@string/label_controls" />
+
+            <ImageView
+                android:id="@+id/controlsArrow"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:padding="14dp"
+                android:src="@android:drawable/arrow_down_float"
+                android:contentDescription="@string/label_controls" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/controlsPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
         <Button
             android:id="@+id/startStopButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
             android:text="@string/btn_start" />
 
         <Button
@@ -50,6 +82,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/btn_logs" />
+
+        </LinearLayout>
 
         <TextView
             android:layout_width="match_parent"
