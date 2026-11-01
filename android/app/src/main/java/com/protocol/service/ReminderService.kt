@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import com.protocol.AppVisibility
 import com.protocol.R
 import com.protocol.config.ConfigStore
 import com.protocol.engine.Answer
@@ -241,12 +242,20 @@ class ReminderService : Service() {
         val activeProc = if (stepScreen == null) st.procs.firstOrNull { it.state != RunState.WAITING } else null
         val procScreen = activeProc?.let { e.procScreen(it.procId) }
         val screen: Screen? = stepScreen ?: procScreen
-        // Процесс идёт на экране, поэтому сразу после нажатия уведомление не нужно:
-        // оно появляется, только когда человек молчит дольше repeat_sec, и дальше
-        // повторяется как обычно. Шаг по графику уведомляется сразу.
+        // Уведомление нужно, только когда оно действительно уведомляет.
+        // Сразу после нажатия кнопки его нет: следующий узел уже на экране.
+        // Оно появляется, когда человек молчит дольше repeat_sec, и дальше
+        // повторяется, пока узел не закрыт. Первое уведомление шага по
+        // графику остаётся, если окно приложения сейчас не на экране.
+        val now = now()
+        val repeatMs = e.config.timeouts.repeatMs
+        val stepRun = st.activeStep
+        val stepQuiet = stepScreen != null && stepRun != null && stepRun.state == RunState.ACTIVE &&
+            now - stepRun.lastInteraction < repeatMs &&
+            (stepRun.lastInteraction > stepRun.t0 || AppVisibility.visible)
         val procQuiet = stepScreen == null && activeProc != null &&
-            now() - activeProc.lastInteraction < e.config.timeouts.repeatMs
-        if (screen != null && !procQuiet) {
+            now - activeProc.lastInteraction < repeatMs
+        if (screen != null && !stepQuiet && !procQuiet) {
             nm.notify(Notifications.ID_ALERT, Notifications.alert(this, screen, activeProc?.procId))
         } else {
             nm.cancel(Notifications.ID_ALERT)

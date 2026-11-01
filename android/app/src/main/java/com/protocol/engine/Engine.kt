@@ -203,6 +203,8 @@ class Engine(
                 else times += Schedule.nextCycleStart(state.cycleStart, config.dayStartMin, zone)
             } else if (run.state == RunState.ACTIVE) {
                 times += run.lastAlert + t.repeatMs
+                // Такт ровно через repeat_sec после нажатия: сервис тогда покажет уведомление.
+                times += run.lastInteraction + t.repeatMs
                 if (!run.escalated) times += run.t0 + t.escalateMs
                 times += run.t0 + t.closeMs
             }
