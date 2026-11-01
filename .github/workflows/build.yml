@@ -34,7 +34,18 @@ jobs:
       - name: Unit tests
         run: gradle test --no-daemon
 
+      # Один и тот же ключ на все сборки, иначе Android не ставит обновление поверх старой версии.
+      - name: Restore debug keystore
+        env:
+          KS_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+        run: |
+          test -n "$KS_B64" || { echo "Секрет DEBUG_KEYSTORE_B64 не задан"; exit 1; }
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/debug.p12"
+
       - name: Build debug APK
+        env:
+          PROTOCOL_KEYSTORE: ${{ runner.temp }}/debug.p12
+          PROTOCOL_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD }}
         run: gradle assembleDebug --no-daemon
 
       - name: Rename APK

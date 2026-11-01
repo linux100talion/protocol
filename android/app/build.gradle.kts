@@ -15,6 +15,23 @@ android {
         versionName = "0.1"
     }
 
+    // Постоянный debug-ключ, чтобы сборки из Actions ставились поверх друг друга.
+    // Путь и пароль приходят из окружения (в CI из секретов). Без них
+    // используется обычный случайный debug-ключ Android Studio.
+    val ksPath = System.getenv("PROTOCOL_KEYSTORE")
+    val ksPassword = System.getenv("PROTOCOL_KEYSTORE_PASSWORD")
+    if (ksPath != null && ksPassword != null) {
+        signingConfigs {
+            getByName("debug") {
+                storeFile = file(ksPath)
+                storeType = "PKCS12"
+                storePassword = ksPassword
+                keyAlias = "protocol"
+                keyPassword = ksPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
