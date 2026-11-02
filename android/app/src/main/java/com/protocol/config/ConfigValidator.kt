@@ -58,6 +58,7 @@ object ConfigValidator {
         for (r in roots) if (r !in nodes) errors += "$where: ссылка на несуществующий узел \"$r\""
         for ((id, n) in nodes) {
             if (!allowWait && n is Node.Wait) errors += "$where, узел \"$id\": wait допустим только в процессах"
+            if (!allowWait && n is Node.Timer) errors += "$where, узел \"$id\": timer допустим только в процессах"
             for (t in n.targets()) if (t !in nodes) errors += "$where, узел \"$id\": ссылка на несуществующий узел \"$t\""
         }
         if (errors.isNotEmpty()) return

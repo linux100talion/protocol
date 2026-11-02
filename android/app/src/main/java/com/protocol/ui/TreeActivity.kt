@@ -42,7 +42,7 @@ class TreeActivity : AppCompatActivity() {
         }
 
         private val STEP_TYPES = listOf("yesno", "instruction", "text", "choice", "done", "fail")
-        private val PROC_TYPES = listOf("yesno", "instruction", "text", "choice", "wait", "done", "fail")
+        private val PROC_TYPES = listOf("yesno", "instruction", "text", "choice", "wait", "timer", "done", "fail")
     }
 
     /** Общий вид шага и процесса для этого экрана. */
@@ -112,6 +112,7 @@ class TreeActivity : AppCompatActivity() {
         is Node.Text -> "text"
         is Node.Choice -> "choice"
         is Node.Wait -> "wait"
+        is Node.Timer -> "timer"
         Node.Done -> "done"
         is Node.Fail -> "fail"
     }
@@ -122,6 +123,7 @@ class TreeActivity : AppCompatActivity() {
         "text" -> getString(R.string.type_text)
         "choice" -> getString(R.string.type_choice)
         "wait" -> getString(R.string.type_wait)
+        "timer" -> getString(R.string.type_timer)
         "done" -> getString(if (isStep) R.string.type_done else R.string.type_done_proc)
         "fail" -> getString(if (isStep) R.string.type_fail else R.string.type_fail_proc)
         else -> key
@@ -133,6 +135,7 @@ class TreeActivity : AppCompatActivity() {
         is Node.Text -> "Далее → ${n.next}"
         is Node.Choice -> n.options.joinToString("\n") { "«${it.label}» → ${it.next}" }
         is Node.Wait -> "«${n.button}» → ${n.next}"
+        is Node.Timer -> "Вопрос каждые ${n.periodMin} мин, на ответ ${n.answerMin} мин\nДа → ${n.next}\nНет или нет ответа → ждать снова"
         Node.Done -> ""
         is Node.Fail -> ""
     }
@@ -248,9 +251,10 @@ class TreeActivity : AppCompatActivity() {
         fun showFieldsFor(type: String) {
             d.textInput.visibility = if (type == "done") View.GONE else View.VISIBLE
             d.buttonInput.visibility = if (type == "wait") View.VISIBLE else View.GONE
+            d.timerRow.visibility = if (type == "timer") View.VISIBLE else View.GONE
             d.yesRow.visibility = if (type == "yesno") View.VISIBLE else View.GONE
             d.noRow.visibility = if (type == "yesno") View.VISIBLE else View.GONE
-            d.nextRow.visibility = if (type == "instruction" || type == "text" || type == "wait") View.VISIBLE else View.GONE
+            d.nextRow.visibility = if (type == "instruction" || type == "text" || type == "wait" || type == "timer") View.VISIBLE else View.GONE
             d.optionsBlock.visibility = if (type == "choice") View.VISIBLE else View.GONE
         }
         d.typeSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -268,6 +272,11 @@ class TreeActivity : AppCompatActivity() {
                 is Node.Instruction -> select(d.nextSpinner, ids, existing.next)
                 is Node.Text -> select(d.nextSpinner, ids, existing.next)
                 is Node.Wait -> { d.buttonInput.setText(existing.button); select(d.nextSpinner, ids, existing.next) }
+                is Node.Timer -> {
+                    d.periodInput.setText(existing.periodMin.toString())
+                    d.answerInput.setText(existing.answerMin.toString())
+                    select(d.nextSpinner, ids, existing.next)
+                }
                 is Node.Choice -> existing.options.forEach { addOptionRow(it.label, it.next) }
                 else -> {}
             }
@@ -294,6 +303,8 @@ class TreeActivity : AppCompatActivity() {
                         next = selected(d.nextSpinner),
                         options = optionRows.map { it.labelInput.text.toString() to selected(it.nextSpinner) },
                         button = d.buttonInput.text.toString(),
+                        periodMin = d.periodInput.text.toString(),
+                        answerMin = d.answerInput.text.toString(),
                     )
                     ConfigEditor.putNode(text, kind, ownerId, d.idInput.text.toString(), node)
                 } catch (e: ConfigException) { ConfigSaver.showError(this, e.message ?: "ошибка"); return@setOnClickListener }

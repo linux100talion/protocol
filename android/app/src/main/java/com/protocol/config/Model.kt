@@ -59,6 +59,11 @@ sealed class Node {
     data class Text(override val text: String, val next: String) : Node()
     data class Choice(override val text: String, val options: List<Option>) : Node()
     data class Wait(override val text: String, val button: String, val next: String) : Node()
+    /** Только в процессах: ждать period, задать вопрос; «да» → next, «нет» или answer без ответа → ждать снова. */
+    data class Timer(override val text: String, val periodMin: Int, val answerMin: Int, val next: String) : Node() {
+        val periodMs: Long get() = periodMin * 60_000L
+        val answerMs: Long get() = answerMin * 60_000L
+    }
     object Done : Node() { override val text: String get() = "" }
     data class Fail(override val text: String) : Node()
 
@@ -69,6 +74,7 @@ sealed class Node {
         is Text -> listOf(next)
         is Choice -> options.map { it.next }
         is Wait -> listOf(next)
+        is Timer -> listOf(next)
         Done -> emptyList()
         is Fail -> emptyList()
     }

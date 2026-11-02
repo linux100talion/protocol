@@ -30,6 +30,9 @@ class EngineTest {
           "nodes": { "q1": { "type": "yesno", "text": "Q1?", "yes": "w", "no": "q1" },
                      "w": { "type": "wait", "text": "Ждём", "button": "Дальше", "next": "q2" },
                      "q2": { "type": "yesno", "text": "Q2?", "yes": "done", "no": "q2" },
+                     "done": { "type": "done" } } },
+        { "id": "tm", "title": "Свет", "start": "t",
+          "nodes": { "t": { "type": "timer", "text": "Свет дали?", "period_min": 30, "answer_min": 5, "next": "done" },
                      "done": { "type": "done" } } }
       ]
     }
@@ -65,7 +68,7 @@ class EngineTest {
     fun `parses and validates example`() {
         val (e, _, _) = make()
         assertEquals(2, e.config.steps.size)
-        assertEquals(1, e.config.processes.size)
+        assertEquals(2, e.config.processes.size)
     }
 
     @Test
@@ -175,6 +178,59 @@ class EngineTest {
         assertTrue(st.procs.isEmpty())
         assertEquals(Mode.RUNNING, st.mode)
         assertTrue(rec.blockers[0].startsWith("PROC|p|TIMEOUT|"))
+    }
+
+    @Test
+    fun `timer process waits, asks, re-arms on no and on silence, closes on yes`() {
+        val (e, rec, st) = make()
+        e.startProcess("tm", at(10, 0))
+        val run = st.procs[0]
+        assertEquals(RunState.WAITING, run.state)
+        assertEquals(at(10, 30), run.timerDueAt)
+        assertTrue(rec.has("PROC_TIMER_SET|tm|t|due=10:30"))
+        assertEquals(at(10, 30), e.nextWakeAt(at(10, 1)))
+        assertTrue(e.procScreen("tm") is Screen.Wait)
+
+        e.tick(at(10, 29))
+        assertEquals(RunState.WAITING, run.state)
+        val alertsBefore = rec.alerts
+        e.tick(at(10, 30))
+        assertEquals(RunState.ACTIVE, run.state)
+        assertNull(run.timerDueAt)
+        assertTrue(rec.alerts > alertsBefore)
+        assertTrue(e.procScreen("tm") is Screen.YesNo)
+        assertTrue(e.nextWakeAt(at(10, 30))!! <= at(10, 35))
+
+        // «Нет»: новый цикл ожидания.
+        e.answerProc("tm", Answer.No, at(10, 31))
+        assertEquals(RunState.WAITING, run.state)
+        assertEquals(at(11, 1), run.timerDueAt)
+        assertTrue(run.path.contains("t:no"))
+
+        // Молчание дольше answer_min: автоматически «нет», процесс не падает в причину.
+        e.tick(at(11, 1))
+        assertEquals(RunState.ACTIVE, run.state)
+        e.tick(at(11, 6))
+        assertEquals(RunState.WAITING, run.state)
+        assertEquals(at(11, 36), run.timerDueAt)
+        assertTrue(rec.has("PROC_TIMER_AUTO_NO|tm|t"))
+        assertTrue(rec.blockers.isEmpty())
+
+        // «Спросить сейчас», потом «Да».
+        e.answerProc("tm", Answer.Resume, at(11, 10))
+        assertEquals(RunState.ACTIVE, run.state)
+        e.answerProc("tm", Answer.Yes, at(11, 11))
+        assertTrue(st.procs.isEmpty())
+        assertTrue(rec.has("PROC_DONE|tm"))
+    }
+
+    @Test
+    fun `timer due survives json round trip`() {
+        val (e, _, st) = make()
+        e.startProcess("tm", at(10, 0))
+        val restored = EngineState.fromJson(st.toJson())
+        assertEquals(at(10, 30), restored.procs[0].timerDueAt)
+        assertEquals(RunState.WAITING, restored.procs[0].state)
     }
 
     @Test

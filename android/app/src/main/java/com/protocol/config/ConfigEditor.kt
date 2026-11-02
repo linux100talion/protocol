@@ -104,6 +104,8 @@ object ConfigEditor {
         next: String?,
         options: List<Pair<String, String?>>,
         button: String? = null,
+        periodMin: String? = null,
+        answerMin: String? = null,
     ): JSONObject {
         val o = JSONObject().put("type", type)
         val t = text.trim()
@@ -131,6 +133,17 @@ object ConfigEditor {
                 val btn = button?.trim().orEmpty()
                 if (btn.isEmpty()) throw ConfigException("У ожидания должна быть надпись кнопки")
                 o.put("button", btn)
+                o.put("next", target(next, "Далее"))
+            }
+            "timer" -> {
+                needText()
+                fun minutes(v: String?, what: String): Int {
+                    val n = v?.trim()?.toIntOrNull() ?: throw ConfigException("$what: нужно целое число минут")
+                    if (n <= 0) throw ConfigException("$what: должно быть больше 0")
+                    return n
+                }
+                o.put("period_min", minutes(periodMin, "Перерыв между вопросами"))
+                o.put("answer_min", minutes(answerMin, "Время на ответ"))
                 o.put("next", target(next, "Далее"))
             }
             "done" -> { }

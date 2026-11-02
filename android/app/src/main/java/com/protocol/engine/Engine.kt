@@ -164,9 +164,25 @@ class Engine(
                 p.pausedAt = null
                 changed = true
             }
+            val proc = config.process(p.procId)
+            val node = proc?.nodes?.get(p.nodeId)
+            if (p.state == RunState.WAITING && node is Node.Timer && proc != null) {
+                val due = p.timerDueAt
+                if (due != null && now >= due) { askTimer(p, proc, now); changed = true }
+                continue
+            }
             if (p.state != RunState.ACTIVE) continue
             val elapsed = now - p.shownAt
-            if (elapsed >= t.closeMs) {
+            if (node is Node.Timer && proc != null) {
+                // Таймер: без ответа answer_min считается «нет», новый цикл ожидания.
+                if (elapsed >= node.answerMs) {
+                    p.path += "${p.nodeId}:timeout"
+                    listener.log("PROC_TIMER_AUTO_NO", p.procId, p.nodeId)
+                    armTimer(p, proc, node, p.nodeId, now)
+                    changed = true
+                    continue
+                }
+            } else if (elapsed >= t.closeMs) {
                 p.state = RunState.REASON
                 p.cause = Cause.TIMEOUT
                 listener.log("PROC_TIMEOUT", p.procId, "node=${p.nodeId}", "path=${p.path.joinToString(">")}")
@@ -209,10 +225,13 @@ class Engine(
                 times += run.t0 + t.closeMs
             }
         }
-        if (state.activeStep == null) for (p in state.procs) if (p.state == RunState.ACTIVE) {
+        if (state.activeStep == null) for (p in state.procs) {
+            val node = config.process(p.procId)?.nodes?.get(p.nodeId)
+            if (p.state == RunState.WAITING) { p.timerDueAt?.let { times += it }; continue }
+            if (p.state != RunState.ACTIVE) continue
             times += p.lastAlert + t.repeatMs
             if (!p.escalated) times += p.shownAt + t.escalateMs
-            times += p.shownAt + t.closeMs
+            times += p.shownAt + (if (node is Node.Timer) node.answerMs else t.closeMs)
         }
         return times.filter { it > now }.minOrNull() ?: times.minOrNull()?.let { now }
     }
@@ -291,6 +310,11 @@ class Engine(
         val node = proc.nodes[run.nodeId] ?: return
         run.lastInteraction = now
         when {
+            run.state == RunState.WAITING && node is Node.Timer -> {
+                // «Спросить сейчас»: не ждать конца периода.
+                if (answer != Answer.Resume) return
+                askTimer(run, proc, now)
+            }
             run.state == RunState.WAITING -> {
                 if (answer != Answer.Resume || node !is Node.Wait) return
                 run.path += "${run.nodeId}:resume"
@@ -299,6 +323,11 @@ class Engine(
                 enterProcNode(run, proc, node.next, now)
             }
             run.state != RunState.ACTIVE -> return
+            node is Node.Timer && answer == Answer.No -> {
+                run.path += "${run.nodeId}:no"
+                listener.log("PROC_ANSWER", proc.id, run.nodeId, "no")
+                armTimer(run, proc, node, run.nodeId, now)
+            }
             node is Node.Fail && answer == Answer.Ack -> {
                 run.state = RunState.REASON
                 run.cause = Cause.FAIL
@@ -328,11 +357,35 @@ class Engine(
                 run.shownAt = now; run.lastAlert = now; run.escalated = false
                 listener.log("PROC_WAIT", proc.id, target)
             }
+            is Node.Timer -> armTimer(run, proc, node, target, now)
             else -> {
                 run.nodeId = target
                 run.shownAt = now; run.lastAlert = now; run.escalated = false
             }
         }
+    }
+
+    /** Узел timer: уснуть на period, вопрос потом. */
+    private fun armTimer(run: ProcRun, proc: Process, node: Node.Timer, target: String, now: Long) {
+        run.nodeId = target
+        run.state = RunState.WAITING
+        run.timerDueAt = now + node.periodMs
+        run.shownAt = now; run.lastAlert = now; run.escalated = false
+        listener.log("PROC_TIMER_SET", proc.id, target, "due=${hhmm(now + node.periodMs)}")
+    }
+
+    /** Узел timer: период вышел или «Спросить сейчас», задать вопрос. */
+    private fun askTimer(run: ProcRun, proc: Process, now: Long) {
+        run.state = RunState.ACTIVE
+        run.timerDueAt = null
+        run.shownAt = now; run.lastAlert = now; run.lastInteraction = now; run.escalated = false
+        listener.log("PROC_TIMER_DUE", proc.id, run.nodeId)
+        listener.alert()
+    }
+
+    private fun hhmm(ms: Long): String {
+        val lt = java.time.Instant.ofEpochMilli(ms).atZone(zone).toLocalTime()
+        return "%02d:%02d".format(lt.hour, lt.minute)
     }
 
     // ---------- Причина блокера ----------
@@ -376,7 +429,12 @@ class Engine(
         val proc = config.process(procId) ?: return null
         val title = proc.title
         if (run.state == RunState.REASON) return Screen.Reason(title, "Процесс ${proc.id} не завершён. Почему?", false, proc.id)
-        return nodeScreen(title, proc.nodes[run.nodeId] ?: return null, run.escalated, escalatePrefix = null)
+        val node = proc.nodes[run.nodeId] ?: return null
+        if (node is Node.Timer && run.state == RunState.WAITING) {
+            val due = run.timerDueAt?.let { hhmm(it) } ?: "?"
+            return Screen.Wait(title, "Вопрос «${node.text}» в $due", "Спросить сейчас")
+        }
+        return nodeScreen(title, node, run.escalated, escalatePrefix = null)
     }
 
     private fun nodeScreen(title: String, node: Node, escalated: Boolean, escalatePrefix: String?): Screen {
@@ -388,6 +446,7 @@ class Engine(
             is Node.Text -> Screen.Text(title, text, escalated)
             is Node.Choice -> Screen.Choice(title, text, node.options.map { it.label }, escalated)
             is Node.Wait -> Screen.Wait(title, node.text, node.button)
+            is Node.Timer -> Screen.YesNo(title, text, escalated)
             Node.Done -> Screen.Ack(title, "", false)
         }
     }
@@ -413,6 +472,7 @@ class Engine(
         return when {
             node is Node.YesNo && answer == Answer.Yes -> { path += "$nodeId:yes"; log("yes"); node.yes }
             node is Node.YesNo && answer == Answer.No -> { path += "$nodeId:no"; log("no"); node.no }
+            node is Node.Timer && answer == Answer.Yes -> { path += "$nodeId:yes"; log("yes"); node.next }
             node is Node.Instruction && answer == Answer.Ack -> { path += "$nodeId:ok"; log("ok"); node.next }
             node is Node.Text && answer is Answer.Text && answer.value.isNotBlank() -> {
                 path += "$nodeId:text"; log(answer.value.replace('\n', ' ')); node.next

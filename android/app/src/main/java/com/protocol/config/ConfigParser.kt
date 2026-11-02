@@ -93,12 +93,24 @@ object ConfigParser {
                     Node.Choice(req(n, "text", w), opts)
                 }
                 "wait" -> Node.Wait(req(n, "text", w), req(n, "button", w), req(n, "next", w))
+                "timer" -> Node.Timer(
+                    req(n, "text", w),
+                    positiveInt(n, "period_min", w),
+                    positiveInt(n, "answer_min", w),
+                    req(n, "next", w),
+                )
                 "done" -> Node.Done
                 "fail" -> Node.Fail(req(n, "text", w))
                 else -> throw ConfigException("$w: неизвестный type \"$type\"")
             }
         }
         return result
+    }
+
+    private fun positiveInt(o: JSONObject, key: String, where: String): Int {
+        val v = o.optInt(key, 0)
+        if (v <= 0) throw ConfigException("$where: поле \"$key\" должно быть целым числом больше 0")
+        return v
     }
 
     private fun req(o: JSONObject, key: String, where: String): String {

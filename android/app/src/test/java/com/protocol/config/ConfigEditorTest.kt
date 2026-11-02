@@ -204,6 +204,20 @@ class ConfigEditorTest {
     }
 
     @Test
+    fun `timer node builds, parses and is process-only`() {
+        val tm = ConfigEditor.node("timer", "Свет дали?", null, null, "done", emptyList(), periodMin = "30", answerMin = "5")
+        var out = ConfigEditor.insertProcess(json, ConfigEditor.ProcessFields("p", "Свет"))
+        out = ConfigEditor.putNode(out, "processes", "p", "n1", tm)
+        val node = valid(out).processes[0].nodes["n1"] as Node.Timer
+        assertEquals(30, node.periodMin); assertEquals(5, node.answerMin); assertEquals("done", node.next)
+
+        val inStep = ConfigEditor.putNode(json, "steps", "b", "n1", tm)
+        assertTrue(ConfigValidator.validate(ConfigParser.parse(inStep)).errors.any { it.contains("timer") })
+        try { ConfigEditor.node("timer", "Q", null, null, "done", emptyList(), periodMin = "0", answerMin = "5"); fail() } catch (_: ConfigException) { }
+        try { ConfigEditor.node("timer", "Q", null, null, "done", emptyList(), periodMin = "10", answerMin = "x"); fail() } catch (_: ConfigException) { }
+    }
+
+    @Test
     fun `wait in a step is rejected by validator, wait without button by builder`() {
         val w = ConfigEditor.node("wait", "Жди", null, null, "done", emptyList(), button = "Дальше")
         val out = ConfigEditor.putNode(json, "steps", "b", "n1", w)

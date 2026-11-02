@@ -37,6 +37,8 @@ data class ProcRun(
     var state: RunState = RunState.ACTIVE,
     var cause: Cause? = null,
     var pausedAt: Long? = null,
+    /** Узел timer: когда задать вопрос. Только в состоянии WAITING. */
+    var timerDueAt: Long? = null,
 )
 
 /** Всё состояние движка. Сохраняется в JSON между перезапусками процесса. */
@@ -67,6 +69,7 @@ data class EngineState(
                 put("escalated", p.escalated); put("lastAlert", p.lastAlert); put("lastInteraction", p.lastInteraction)
                 put("state", p.state.name); put("cause", p.cause?.name ?: JSONObject.NULL)
                 put("pausedAt", p.pausedAt ?: JSONObject.NULL)
+                put("timerDueAt", p.timerDueAt ?: JSONObject.NULL)
             })
         })
         return o.toString()
@@ -105,6 +108,7 @@ data class EngineState(
                         state = RunState.valueOf(p.optString("state", "ACTIVE")),
                         cause = if (p.isNull("cause")) null else Cause.valueOf(p.getString("cause")),
                         pausedAt = if (p.isNull("pausedAt")) null else p.getLong("pausedAt"),
+                        timerDueAt = if (p.isNull("timerDueAt")) null else p.getLong("timerDueAt"),
                     )
                 }
                 st
