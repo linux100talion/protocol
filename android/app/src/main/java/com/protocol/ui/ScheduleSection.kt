@@ -39,6 +39,8 @@ class ScheduleSection(
     private val editToggle: ImageButton,
     private val processList: LinearLayout,
     private val addProcessButton: Button,
+    /** Проверка разрешений перед запуском процесса; false: запрос показан, запуск позже. */
+    private val canStartProcess: () -> Boolean,
 ) {
     private var editMode = false
     private var cachedText: String? = null
@@ -91,8 +93,10 @@ class ScheduleSection(
             val open = engine?.state?.procs?.any { it.procId == p.id } == true
             row.startButton.isEnabled = !open
             row.startButton.setOnClickListener {
-                if (known) ReminderService.send(activity, ReminderService.intent(activity, ReminderService.ACTION_START_PROC).putExtra(ReminderService.EXTRA_PROC_ID, p.id))
-                else Toast.makeText(activity, R.string.proc_not_loaded, Toast.LENGTH_SHORT).show()
+                when {
+                    !known -> Toast.makeText(activity, R.string.proc_not_loaded, Toast.LENGTH_SHORT).show()
+                    canStartProcess() -> ReminderService.send(activity, ReminderService.intent(activity, ReminderService.ACTION_START_PROC).putExtra(ReminderService.EXTRA_PROC_ID, p.id))
+                }
             }
             row.startButton.setOnLongClickListener { TreeActivity.open(activity, ConfigEditor.PROCESSES, p.id, edit = false); true }
             row.actions.visibility = if (editMode) View.VISIBLE else View.GONE

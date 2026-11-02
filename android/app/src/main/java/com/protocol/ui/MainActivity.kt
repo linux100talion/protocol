@@ -81,7 +81,7 @@ class MainActivity : AppCompatActivity() {
             else if (ensurePermissions()) ReminderService.send(this, ReminderService.intent(this, ReminderService.ACTION_START))
         }
 
-        schedule = ScheduleSection(this, store, b.scheduleTable, b.editScheduleButton, b.processButtons, b.addProcessButton)
+        schedule = ScheduleSection(this, store, b.scheduleTable, b.editScheduleButton, b.processButtons, b.addProcessButton) { ensureNotifications() }
 
         EngineHolder.version.observe(this) { render() }
         // Поднять движок, чтобы главный экран знал состояние.
@@ -145,6 +145,17 @@ class MainActivity : AppCompatActivity() {
         b.controlsArrow.setImageResource(if (open) android.R.drawable.arrow_up_float else android.R.drawable.arrow_down_float)
     }
 
+    /** Разрешение на уведомления нужно и процессам, не только программе: спрашиваем при первом из действий. */
+    private fun ensureNotifications(): Boolean {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return false
+        }
+        return true
+    }
+
     private fun checkConfig() {
         val msg = when (val r = store.reload()) {
             is ConfigStore.LoadResult.Ok -> buildString {
@@ -162,12 +173,7 @@ class MainActivity : AppCompatActivity() {
      * Недостающие запрашиваются по одному; после выдачи человек жмёт «Запустить» снова.
      */
     private fun ensurePermissions(): Boolean {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-            return false
-        }
+        if (!ensureNotifications()) return false
         if (Build.VERSION.SDK_INT >= 31) {
             val am = getSystemService(AlarmManager::class.java)
             if (!am.canScheduleExactAlarms()) {
