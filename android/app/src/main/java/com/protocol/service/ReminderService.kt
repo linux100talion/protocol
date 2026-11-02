@@ -13,6 +13,7 @@ import android.os.PowerManager
 import com.protocol.AppVisibility
 import com.protocol.R
 import com.protocol.config.ConfigStore
+import com.protocol.config.Node
 import com.protocol.engine.Answer
 import com.protocol.engine.Cause
 import com.protocol.engine.Engine
@@ -66,7 +67,8 @@ class ReminderService : Service() {
     private var engine: Engine? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
-    private val tickRunnable = Runnable { engine?.tick(now()); planNextWake() }
+    // Такт по таймеру: после него уведомления перерисовываются сразу, не дожидаясь будильника.
+    private val tickRunnable = Runnable { engine?.tick(now()); render(); planNextWake() }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -251,7 +253,10 @@ class ReminderService : Service() {
         val now = now()
         val repeatMs = e.config.timeouts.repeatMs
         val stepRun = st.activeStep
-        val quiet = AppVisibility.visible && when {
+        // Вопрос таймера приходит сам, без нажатия: уведомляем всегда, даже при открытом окне.
+        val timerQuestion = activeProc != null &&
+            e.config.process(activeProc.procId)?.nodes?.get(activeProc.nodeId) is Node.Timer
+        val quiet = AppVisibility.visible && !timerQuestion && when {
             stepScreen != null -> stepRun != null && stepRun.state == RunState.ACTIVE && now - stepRun.lastInteraction < repeatMs
             activeProc != null -> now - activeProc.lastInteraction < repeatMs
             else -> false
