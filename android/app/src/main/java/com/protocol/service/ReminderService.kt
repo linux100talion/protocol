@@ -253,10 +253,11 @@ class ReminderService : Service() {
         val now = now()
         val repeatMs = e.config.timeouts.repeatMs
         val stepRun = st.activeStep
-        // Вопрос таймера приходит сам, без нажатия: уведомляем всегда, даже при открытом окне.
+        // Вопрос таймера идёт тем же путём, что шаг: полноэкранно, и с тем же
+        // правилом тишины при открытом окне.
         val timerQuestion = activeProc != null &&
             e.config.process(activeProc.procId)?.nodes?.get(activeProc.nodeId) is Node.Timer
-        val quiet = AppVisibility.visible && !timerQuestion && when {
+        val quiet = AppVisibility.visible && when {
             stepScreen != null -> stepRun != null && stepRun.state == RunState.ACTIVE && now - stepRun.lastInteraction < repeatMs
             activeProc != null -> now - activeProc.lastInteraction < repeatMs
             else -> false
