@@ -262,7 +262,7 @@ class ReminderService : Service() {
             else -> false
         }
         if (screen != null && !quiet) {
-            nm.notify(Notifications.ID_ALERT, Notifications.alert(this, screen, activeProc?.procId))
+            nm.notify(Notifications.ID_ALERT, Notifications.alert(this, screen, activeProc?.procId, fullScreen = stepScreen != null || timerQuestion))
         } else {
             nm.cancel(Notifications.ID_ALERT)
         }

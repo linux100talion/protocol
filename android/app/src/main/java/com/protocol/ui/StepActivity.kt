@@ -13,11 +13,18 @@ import com.protocol.service.EngineHolder
 /**
  * Экран шага по графику. Рисует Screen из движка. SPEC 6.2.
  * Назад не работает. Закрывается сам, когда шага нет.
- * Процессы здесь не показываются: они идут на главном экране.
+ * Процессы идут на главном экране; исключение: вопрос таймера процесса
+ * (EXTRA_PROC_ID) открывается здесь поверх блокировки через fullScreenIntent
+ * и закрывается, как только вопрос отвечен.
  */
 class StepActivity : AppCompatActivity() {
 
+    companion object {
+        const val EXTRA_PROC_ID = "proc_id"
+    }
+
     private lateinit var b: ActivityStepBinding
+    private var procId: String? = null
     private var wasStepReason = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,6 +39,7 @@ class StepActivity : AppCompatActivity() {
             window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        procId = intent.getStringExtra(EXTRA_PROC_ID)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() { /* назад запрещён */ }
@@ -42,17 +50,25 @@ class StepActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        procId = intent.getStringExtra(EXTRA_PROC_ID)
         render()
     }
 
     private fun render() {
         val engine = EngineHolder.engine ?: run { finishAndMaybeShowStopped(); return }
-        val scr = engine.stepScreen() ?: run { finishAndMaybeShowStopped(); return }
-        if (scr is Screen.Reason) wasStepReason = true
+        var target: String? = null
+        var scr: Screen? = engine.stepScreen()
+        if (scr == null) {
+            // Вопрос таймера процесса. Ожидание (после «Нет») здесь не показываем.
+            target = procId
+            scr = target?.let { engine.procScreen(it) }?.takeUnless { it is Screen.Wait }
+        }
+        if (scr == null) { finishAndMaybeShowStopped(); return }
+        if (target == null && scr is Screen.Reason) wasStepReason = true
 
         b.titleText.text = scr.title
         b.questionText.text = scr.text
-        ScreenBinder.bind(this, scr, null, b.answerInput, b.buttons, large = true)
+        ScreenBinder.bind(this, scr, target, b.answerInput, b.buttons, large = true)
     }
 
     private fun finishAndMaybeShowStopped() {

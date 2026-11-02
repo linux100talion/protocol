@@ -52,14 +52,22 @@ object Notifications {
     /**
      * Уведомление активного шага или процесса. Нельзя смахнуть.
      * Шаг (procId == null): полноэкранное, открывает экран шага.
-     * Процесс: обычное, открывает главный экран, где процесс и идёт.
+     * Процесс: открывает главный экран, где процесс и идёт. С fullScreen
+     * (вопрос таймера) ещё и полноэкранный intent на экран шага с этим
+     * процессом: при включённом телефоне это баннер, при выключенном
+     * экране вопрос поверх блокировки.
      */
-    fun alert(ctx: Context, screen: Screen, procId: String?): Notification {
+    fun alert(ctx: Context, screen: Screen, procId: String?, fullScreen: Boolean): Notification {
         val isStep = procId == null
         val open = Intent(ctx, if (isStep) StepActivity::class.java else MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         val pi = PendingIntent.getActivity(ctx, 10, open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val fsi = if (isStep) pi else PendingIntent.getActivity(
+            ctx, 13,
+            Intent(ctx, StepActivity::class.java).putExtra(StepActivity.EXTRA_PROC_ID, procId).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
         val b = NotificationCompat.Builder(ctx, CH_ALERT)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(screen.title)
@@ -74,7 +82,7 @@ object Notifications {
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(pi)
-        if (isStep) b.setFullScreenIntent(pi, true)
+        if (fullScreen) b.setFullScreenIntent(fsi, true)
         if (screen is Screen.YesNo) {
             b.addAction(0, ctx.getString(R.string.btn_yes), action(ctx, NotificationActionReceiver.ACTION_YES, procId, 11))
             b.addAction(0, ctx.getString(R.string.btn_no), action(ctx, NotificationActionReceiver.ACTION_NO, procId, 12))
