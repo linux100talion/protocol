@@ -65,6 +65,7 @@ class ReminderService : Service() {
     private lateinit var store: ConfigStore
     private lateinit var log: EventLog
     private var engine: Engine? = null
+    private var lastAlertKey: String? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
     // Такт по таймеру: после него уведомления перерисовываются сразу, не дожидаясь будильника.
@@ -261,15 +262,25 @@ class ReminderService : Service() {
             activeProc != null -> now - activeProc.lastInteraction < repeatMs
             else -> false
         }
+        val fullScreen = stepScreen != null || timerQuestion
         if (screen != null && !quiet) {
-            nm.notify(Notifications.ID_ALERT, Notifications.alert(this, screen, activeProc?.procId, fullScreen = stepScreen != null || timerQuestion))
+            nm.notify(Notifications.ID_ALERT, Notifications.alert(this, screen, activeProc?.procId, fullScreen))
+            // Одна строка в лог на каждый новый показ, чтобы по логам было видно, что сработало.
+            val key = "${activeProc?.procId}|${screen.title}|${screen.text}"
+            if (key != lastAlertKey) {
+                lastAlertKey = key
+                log.write(cycleDate(), "ALERT", if (activeProc == null) "step" else "proc=${activeProc.procId}", "fullScreen=$fullScreen", "visible=${AppVisibility.visible}")
+            }
         } else {
             nm.cancel(Notifications.ID_ALERT)
+            lastAlertKey = null
         }
-        if (stepScreen != null) {
-            // Если система запретит запуск из фона, сработает fullScreenIntent уведомления.
+        // Шаг и вопрос таймера: открыть экран поверх блокировки. Если система
+        // запретит запуск из фона, сработает fullScreenIntent уведомления.
+        if (fullScreen && !quiet) {
             try {
                 startActivity(Intent(this, StepActivity::class.java).apply {
+                    activeProc?.let { putExtra(StepActivity.EXTRA_PROC_ID, it.procId) }
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 })
             } catch (_: Exception) { }

@@ -498,3 +498,8 @@ answer_min, next. Ждёт period без напоминаний (WAITING + timer
 только fullScreenIntent. Вопрос таймера получил FSI на StepActivity с
 EXTRA_PROC_ID (StepActivity снова умеет показать процесс, но только вопрос,
 не ожидание). Категория ALARM оставлена.
+
+02.11.2026: вопрос таймера всё ещё без всплывающего показа при рабочем
+шаге. Путь сделан идентичным шагу: сервис сам вызывает startActivity
+(StepActivity с EXTRA_PROC_ID) плюс FSI. В лог пишется ALERT|step или
+proc=<id>|fullScreen=|visible= на каждый новый показ.
