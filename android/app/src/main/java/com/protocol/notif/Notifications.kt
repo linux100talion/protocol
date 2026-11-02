@@ -67,7 +67,10 @@ object Notifications {
             .setStyle(NotificationCompat.BigTextStyle().bigText(screen.text))
             .setOngoing(true)
             .setAutoCancel(false)
-            .setCategory(if (isStep) NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_REMINDER)
+            // Категория «будильник» и у процессов: в режиме «Не беспокоить» напоминания
+            // обычно подавляются, а будильники показываются всплывающими.
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setOnlyAlertOnce(false)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(pi)
