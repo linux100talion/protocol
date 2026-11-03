@@ -41,6 +41,9 @@ data class ProcRun(
     var timerDueAt: Long? = null,
 )
 
+/** Засчитанное монитором сообщение. Текст не хранится. ARCHITECTURE 4.3. */
+data class MonMsg(val chat: String, val sender: String, val category: String, val at: Long, val key: String)
+
 /** Всё состояние движка. Сохраняется в JSON между перезапусками процесса. */
 data class EngineState(
     var mode: Mode = Mode.IDLE,
@@ -48,12 +51,21 @@ data class EngineState(
     var nextStepIndex: Int = 0,
     var activeStep: StepRun? = null,
     val procs: MutableList<ProcRun> = ArrayList(),
+    /** Сообщения мониторов за текущий цикл, ключ = id монитора. */
+    val monitors: MutableMap<String, MutableList<MonMsg>> = LinkedHashMap(),
 ) {
     fun toJson(): String {
         val o = JSONObject()
         o.put("mode", mode.name)
         o.put("cycleStart", cycleStart)
         o.put("nextStepIndex", nextStepIndex)
+        o.put("monitors", JSONObject().apply {
+            for ((id, msgs) in monitors) put(id, JSONArray().apply {
+                for (m in msgs) put(JSONObject().apply {
+                    put("chat", m.chat); put("sender", m.sender); put("category", m.category); put("at", m.at); put("key", m.key)
+                })
+            })
+        })
         activeStep?.let { s ->
             o.put("activeStep", JSONObject().apply {
                 put("stepId", s.stepId); put("t0", s.t0); put("nodeId", s.nodeId ?: JSONObject.NULL)
@@ -95,6 +107,17 @@ data class EngineState(
                         state = RunState.valueOf(s.optString("state", "ACTIVE")),
                         cause = if (s.isNull("cause")) null else Cause.valueOf(s.getString("cause")),
                     )
+                }
+                o.optJSONObject("monitors")?.let { mo ->
+                    for (id in mo.keys()) {
+                        val list = ArrayList<MonMsg>()
+                        val a = mo.optJSONArray(id) ?: continue
+                        for (i in 0 until a.length()) {
+                            val m = a.getJSONObject(i)
+                            list += MonMsg(m.optString("chat"), m.optString("sender"), m.optString("category"), m.optLong("at"), m.optString("key"))
+                        }
+                        st.monitors[id] = list
+                    }
                 }
                 val arr = o.optJSONArray("procs")
                 if (arr != null) for (i in 0 until arr.length()) {

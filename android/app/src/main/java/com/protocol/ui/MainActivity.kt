@@ -20,6 +20,7 @@ import com.protocol.config.ConfigStore
 import com.protocol.databinding.ActivityMainBinding
 import com.protocol.databinding.ItemProcessBinding
 import com.protocol.engine.Mode
+import com.protocol.monitor.MonitorListenerService
 import com.protocol.service.EngineHolder
 import com.protocol.service.ReminderService
 
@@ -132,9 +133,30 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        renderMonitors(engine)
         schedule.render()
         b.startStopButton.isEnabled = store.configUri != null && err == null
         b.startStopButton.text = getString(if (engine?.state?.mode == Mode.RUNNING) R.string.btn_stop else R.string.btn_start)
+    }
+
+    /** Блок «Мониторы»: доступ к уведомлениям и счёт за цикл по каждому монитору. ARCHITECTURE 4.3. */
+    private fun renderMonitors(engine: com.protocol.engine.Engine?) {
+        val monitors = engine?.config?.monitors.orEmpty()
+        b.monitorsBlock.visibility = if (monitors.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
+        if (monitors.isEmpty() || engine == null) return
+        val enabled = MonitorListenerService.enabled(this)
+        b.monitorAccessText.text = getString(if (enabled) R.string.mon_access_ok else R.string.mon_access_missing)
+        b.monitorAccessButton.visibility = if (enabled) android.view.View.GONE else android.view.View.VISIBLE
+        b.monitorAccessButton.setOnClickListener {
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        }
+        b.monitorRows.removeAllViews()
+        for (m in monitors) {
+            val tv = android.widget.TextView(this)
+            tv.setPadding(0, 8, 0, 8)
+            tv.text = getString(R.string.mon_line, m.id, m.chats.joinToString(", "), engine.monitorSummary(m.id).text(m))
+            b.monitorRows.addView(tv)
+        }
     }
 
     private val prefs by lazy { getSharedPreferences("ui", MODE_PRIVATE) }

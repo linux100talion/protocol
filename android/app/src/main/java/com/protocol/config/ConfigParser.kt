@@ -40,7 +40,12 @@ object ConfigParser {
             parseProcess(procArr.getJSONObject(i), "processes[$i]")
         }
 
-        return Config(version, dayStart, timeouts, steps, processes)
+        val monArr = root.optJSONArray("monitors")
+        val monitors = if (monArr == null) emptyList() else (0 until monArr.length()).map { i ->
+            parseMonitor(monArr.getJSONObject(i), "monitors[$i]")
+        }
+
+        return Config(version, dayStart, timeouts, steps, processes, monitors)
     }
 
     private fun parseStep(o: JSONObject, where: String): Step {
@@ -58,8 +63,30 @@ object ConfigParser {
             nodes = nodes,
             title = o.optString("title", "").trim().ifEmpty { null },
             untilMin = o.optString("until", "").trim().ifEmpty { null }?.let { parseTime(it, "$w: until") },
+            monitors = strings(o.optJSONArray("monitors")),
         )
     }
+
+    private fun parseMonitor(o: JSONObject, where: String): Monitor {
+        val id = req(o, "id", where)
+        val w = "монитор \"$id\""
+        val catArr = o.optJSONArray("categories")
+        val categories = if (catArr == null || catArr.length() == 0) listOf(Monitor.ALL) else (0 until catArr.length()).map { i ->
+            val c = catArr.getJSONObject(i)
+            val cw = "$w, categories[$i]"
+            val cid = req(c, "id", cw)
+            Category(cid, c.optString("label", "").trim().ifEmpty { cid }, strings(c.optJSONArray("contains")))
+        }
+        return Monitor(
+            id = id,
+            source = req(o, "source", w).trim().lowercase(),
+            chats = strings(o.optJSONArray("chats")).map { it.trim() }.filter { it.isNotEmpty() },
+            categories = categories,
+        )
+    }
+
+    private fun strings(a: org.json.JSONArray?): List<String> =
+        if (a == null) emptyList() else (0 until a.length()).map { a.optString(it, "") }
 
     private fun parseProcess(o: JSONObject, where: String): Process {
         val id = req(o, "id", where)

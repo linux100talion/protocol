@@ -24,6 +24,7 @@ import com.protocol.engine.RunState
 import com.protocol.engine.Schedule
 import com.protocol.engine.Screen
 import com.protocol.log.EventLog
+import com.protocol.monitor.SignalInbox
 import com.protocol.notif.Notifications
 import com.protocol.ui.StepActivity
 
@@ -43,12 +44,16 @@ class ReminderService : Service() {
         const val ACTION_START_PROC = "start_proc"
         const val ACTION_REASON = "reason"
         const val ACTION_TIME_CHANGED = "time_changed"
+        const val ACTION_SIGNALS = "signals"      // в очереди сигналов что-то есть
 
         const val EXTRA_PROC_ID = "proc_id"       // null => шаг
         const val EXTRA_ANSWER = "answer"         // yes|no|ack|text|choice|resume
         const val EXTRA_VALUE = "value"           // текст или индекс
         const val EXTRA_IS_STEP = "is_step"
         const val EXTRA_ID = "id"
+
+        /** Сервис живёт: между onCreate и onDestroy. Служба уведомлений шлёт сигналы только живому. */
+        @Volatile var alive = false
 
         fun intent(ctx: Context, action: String): Intent = Intent(ctx, ReminderService::class.java).setAction(action)
 
@@ -64,6 +69,7 @@ class ReminderService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var store: ConfigStore
     private lateinit var log: EventLog
+    private lateinit var inbox: SignalInbox
     private var engine: Engine? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -76,6 +82,8 @@ class ReminderService : Service() {
         super.onCreate()
         store = ConfigStore(this)
         log = EventLog(this)
+        inbox = SignalInbox(this)
+        alive = true
         goForeground(getString(R.string.notif_service_text))
     }
 
@@ -88,6 +96,9 @@ class ReminderService : Service() {
         val e = engine!!
         val now = now()
         val i = intent ?: Intent()
+        // Очередь сигналов разбирается при каждом старте, не только по ACTION_SIGNALS:
+        // к будильнику шага счёт мониторов уже полный.
+        for (s in inbox.drain()) e.receive(s, now)
         when (i.action) {
             ACTION_START -> {
                 // На «Запустить» конфиг перечитывается из файла (SPEC 5.1).
@@ -97,6 +108,7 @@ class ReminderService : Service() {
             ACTION_MANUAL_STOP -> e.manualStop(now)
             ACTION_TICK, null -> e.tick(now)
             ACTION_TIME_CHANGED -> { e.listenerLog("TIME_CHANGED"); e.tick(now) }
+            ACTION_SIGNALS -> e.tick(now)
             ACTION_ANSWER -> {
                 val procId = i.getStringExtra(EXTRA_PROC_ID)
                 val value = i.getStringExtra(EXTRA_VALUE)
@@ -133,6 +145,7 @@ class ReminderService : Service() {
     }
 
     override fun onDestroy() {
+        alive = false
         handler.removeCallbacks(tickRunnable)
         releaseWake()
         super.onDestroy()

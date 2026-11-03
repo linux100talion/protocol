@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, online]
     paths: ['android/**', '.github/workflows/build.yml']
   workflow_dispatch:
 
@@ -56,13 +56,16 @@ jobs:
           name: protocol-debug
           path: android/protocol-debug.apk
 
-      # Скользящий пре-релиз latest-debug: APK можно скачать с телефона без входа в GitHub.
+      # Скользящий пре-релиз: APK можно скачать с телефона без входа в GitHub.
+      # main → latest-debug, другие ветки → latest-<ветка>.
       - name: Publish rolling pre-release
         env:
           GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
         run: |
-          git tag -f latest-debug
-          git push -f origin latest-debug
-          gh release view latest-debug >/dev/null 2>&1 || \
-            gh release create latest-debug --prerelease --title "Debug build" --notes "Автосборка из main. Подпись debug."
-          gh release upload latest-debug protocol-debug.apk --clobber
+          if [ "$BRANCH" = "main" ]; then TAG=latest-debug; else TAG="latest-$BRANCH"; fi
+          git tag -f "$TAG"
+          git push -f origin "$TAG"
+          gh release view "$TAG" >/dev/null 2>&1 || \
+            gh release create "$TAG" --prerelease --title "Debug build ($BRANCH)" --notes "Автосборка из $BRANCH. Подпись debug."
+          gh release upload "$TAG" protocol-debug.apk --clobber

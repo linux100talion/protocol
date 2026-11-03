@@ -129,6 +129,7 @@
       "title": "Вечерний отчёт",
       "check": "Ты отправил отчёт?",
       "forgot": "Ты забыл отправить отчёт",
+      "monitors": ["family_chat"],
       "on_no": "r1",
       "nodes": {
         "r1": {
@@ -200,6 +201,17 @@
           "text": "Дверь не закрыта. Программа останавливается."
         }
       }
+    }
+  ],
+  "monitors": [
+    {
+      "id": "family_chat",
+      "source": "whatsapp",
+      "chats": ["Семья", "Дача"],
+      "categories": [
+        { "id": "question", "label": "Вопросы", "contains": ["?"] },
+        { "id": "other", "label": "Прочее" }
+      ]
     }
   ],
   "processes": [

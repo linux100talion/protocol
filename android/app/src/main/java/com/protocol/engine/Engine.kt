@@ -1,6 +1,7 @@
 package com.protocol.engine
 
 import com.protocol.config.Config
+import com.protocol.config.Monitor
 import com.protocol.config.Node
 import com.protocol.config.Process
 import com.protocol.config.Step
@@ -16,6 +17,25 @@ sealed class Answer {
     data class Choice(val index: Int) : Answer()
     /** Кнопка узла wait. */
     object Resume : Answer()
+}
+
+/**
+ * Сообщение из внешнего источника, как его отдаёт адаптер. ARCHITECTURE 4.3, 4.4.
+ * Адаптер только переводит чужой формат в этот, решает движок.
+ */
+data class Signal(val source: String, val chat: String, val sender: String, val text: String, val at: Long) {
+    /** Ключ дедупликации: источник перевыставляет уведомление с теми же сообщениями. */
+    val key: String get() = "$source|${chat.trim()}|${sender.trim()}|$at|${text.hashCode()}"
+}
+
+/** Сводка монитора за цикл для экрана и лога. */
+data class MonitorSummary(val monitorId: String, val total: Int, val byCategory: List<Pair<String, Int>>) {
+    /** «12 сообщений, вопросов 3». */
+    fun text(monitor: Monitor): String {
+        if (total == 0) return "сообщений нет"
+        val parts = byCategory.filter { it.second > 0 }.map { (id, n) -> "${monitor.categories.firstOrNull { c -> c.id == id }?.label ?: id}: $n" }
+        return if (monitor.categories.size <= 1) "сообщений $total" else "сообщений $total, ${parts.joinToString(", ")}"
+    }
 }
 
 /** Что показывать на экране. Движок не знает про Android. */
@@ -54,6 +74,11 @@ class Engine(
 ) {
     private val t = config.timeouts
 
+    companion object {
+        /** Потолок сообщений одного монитора в состоянии: JSON не должен разрастаться. */
+        const val MAX_MON_MSGS = 2000
+    }
+
     // ---------- Запуск и остановка ----------
 
     /** SPEC 5.1. */
@@ -61,6 +86,7 @@ class Engine(
         state.mode = Mode.RUNNING
         state.cycleStart = Schedule.cycleStartFor(now, config.dayStartMin, zone)
         state.activeStep = null
+        pruneMonitors()
         listener.log("START")
         listener.log("CYCLE_START", Schedule.cycleDate(state.cycleStart, zone).toString())
         var idx = 0
@@ -102,8 +128,11 @@ class Engine(
         while (state.activeStep == null) {
             val next = Schedule.nextCycleStart(state.cycleStart, config.dayStartMin, zone)
             if (now < next) break
+            // Итог мониторов в лог уходящего цикла, до смены даты файла.
+            for (m in config.monitors) listener.log("MON_CYCLE", m.id, monitorSummary(m.id).text(m))
             state.cycleStart = next
             state.nextStepIndex = 0
+            pruneMonitors()
             listener.log("CYCLE_START", Schedule.cycleDate(state.cycleStart, zone).toString())
             changed = true
         }
@@ -116,7 +145,8 @@ class Engine(
         if (dueAt(state.nextStepIndex) > now) return false
         val step = config.steps[state.nextStepIndex]
         state.activeStep = StepRun(stepId = step.id, t0 = now)
-        listener.log("STEP_ASKED", step.id, "plan=${formatHHMM(step.timeMin)}")
+        val mons = step.monitors.mapNotNull { config.monitor(it) }.map { "${it.id}=${monitorSummary(it.id).total}" }
+        listener.log("STEP_ASKED", step.id, "plan=${formatHHMM(step.timeMin)}", *mons.toTypedArray())
         listener.alert()
         return true
     }
@@ -388,6 +418,51 @@ class Engine(
         return "%02d:%02d".format(lt.hour, lt.minute)
     }
 
+    // ---------- Мониторы ----------
+
+    /**
+     * Принять сообщение из внешнего источника. ARCHITECTURE 4.3.
+     * Находит монитор по источнику и беседе, классифицирует по тексту и
+     * отправителю, отсекает дубль, засчитывает. true: засчитано хотя бы одним
+     * монитором. Ничего наружу не делает: это счёт, не действие.
+     */
+    fun receive(signal: Signal, now: Long): Boolean {
+        var counted = false
+        for (m in config.monitors) {
+            if (m.source != signal.source || !m.allowsChat(signal.chat)) continue
+            val category = m.classify(signal.text, signal.sender) ?: continue
+            val list = state.monitors.getOrPut(m.id) { ArrayList() }
+            if (list.any { it.key == signal.key }) continue
+            list += MonMsg(signal.chat.trim(), signal.sender.trim(), category, signal.at, signal.key)
+            if (list.size > MAX_MON_MSGS) list.subList(0, list.size - MAX_MON_MSGS).clear()
+            listener.log("MON_MSG", m.id, signal.chat.trim(), category)
+            counted = true
+        }
+        if (counted) listener.changed()
+        return counted
+    }
+
+    fun monitorSummary(monitorId: String): MonitorSummary {
+        val m = config.monitor(monitorId)
+        val msgs = state.monitors[monitorId] ?: emptyList<MonMsg>()
+        val cats = m?.categories?.map { c -> c.id to msgs.count { it.category == c.id } } ?: emptyList()
+        return MonitorSummary(monitorId, msgs.size, cats)
+    }
+
+    /** Текст сводки для шага: по строке на монитор, или null, если мониторов у шага нет. */
+    fun stepMonitorText(step: Step): String? {
+        val mons = step.monitors.mapNotNull { config.monitor(it) }
+        if (mons.isEmpty()) return null
+        return mons.joinToString("\n") { m -> "${m.chats.joinToString(", ")}: ${monitorSummary(m.id).text(m)}" }
+    }
+
+    /** Оставить только сообщения текущего цикла и только известных мониторов. */
+    private fun pruneMonitors() {
+        val known = config.monitors.map { it.id }.toSet()
+        state.monitors.keys.retainAll(known)
+        for (list in state.monitors.values) list.removeAll { it.at < state.cycleStart }
+    }
+
     // ---------- Причина блокера ----------
 
     /** SPEC 5.5 и 5.8. Для шага останавливает программу, для процесса закрывает процесс. */
@@ -420,7 +495,12 @@ class Engine(
         val step = config.step(run.stepId) ?: return null
         if (run.state == RunState.REASON) return Screen.Reason("Шаг ${step.id}", "Шаг ${step.id} не решён. Почему?", true, step.id)
         val title = "Шаг ${step.id}"
-        val nodeId = run.nodeId ?: return Screen.YesNo(title, if (run.escalated) step.forgot else step.check, run.escalated)
+        val nodeId = run.nodeId
+        if (nodeId == null) {
+            val check = if (run.escalated) step.forgot else step.check
+            val mon = stepMonitorText(step)
+            return Screen.YesNo(title, if (mon == null) check else "$check\n\n$mon", run.escalated)
+        }
         return nodeScreen(title, step.nodes[nodeId] ?: return null, run.escalated, escalatePrefix = step.forgot)
     }
 

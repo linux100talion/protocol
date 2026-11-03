@@ -32,6 +32,25 @@ object ConfigValidator {
 
             val roots = listOfNotNull(s.onYes, s.onNo)
             checkTree("шаг \"${s.id}\"", s.nodes, roots, allowWait = false, errors, warnings)
+            for (m in s.monitors) if (c.monitor(m) == null) errors += "шаг \"${s.id}\": ссылка на несуществующий монитор \"$m\""
+        }
+
+        // Мониторы. ARCHITECTURE 4.3.
+        val seenMons = HashSet<String>()
+        for (m in c.monitors) {
+            val w = "монитор \"${m.id}\""
+            if (!seenMons.add(m.id)) errors += "$w: id повторяется"
+            if (!idRe.matches(m.id)) errors += "$w: id должен быть из латиницы, цифр и _"
+            if (m.source !in Monitor.SOURCES) errors += "$w: неизвестный source \"${m.source}\", допустимы ${Monitor.SOURCES.joinToString()}"
+            if (m.chats.isEmpty()) errors += "$w: chats пуст"
+            val seenCats = HashSet<String>()
+            for ((i, cat) in m.categories.withIndex()) {
+                if (!seenCats.add(cat.id)) errors += "$w: категория \"${cat.id}\" повторяется"
+                if (!idRe.matches(cat.id)) errors += "$w: id категории \"${cat.id}\" должен быть из латиницы, цифр и _"
+                if (cat.contains.isEmpty() && i != m.categories.lastIndex)
+                    warnings += "$w: категория \"${cat.id}\" без условий ловит всё, категории после неё недостижимы"
+                if (cat.contains.any { it.isBlank() }) errors += "$w: категория \"${cat.id}\": пустая строка в contains"
+            }
         }
 
         val seenProcs = HashSet<String>()

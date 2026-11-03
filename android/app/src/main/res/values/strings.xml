@@ -88,6 +88,12 @@
     <string name="proc_not_loaded">Процесс появится в движке после перезапуска программы</string>
     <string name="btn_save">Сохранить</string>
     <string name="btn_delete">Удалить</string>
+    <string name="label_monitors">Мониторы</string>
+    <string name="mon_access_ok">Доступ к уведомлениям есть</string>
+    <string name="mon_access_missing">Нет доступа к уведомлениям: монитор ничего не видит</string>
+    <string name="btn_mon_access">Дать доступ к уведомлениям</string>
+    <string name="mon_line">%1$s (%2$s): %3$s</string>
+
     <string name="label_next_step">Следующий шаг: %1$s в %2$s</string>
     <string name="label_current_step">Текущий шаг: %1$s</string>
 

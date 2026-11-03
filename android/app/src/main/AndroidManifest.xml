@@ -74,6 +74,17 @@
                 android:value="Круглосуточные обязательные напоминания по локальному расписанию" />
         </service>
 
+        <!-- Монитор: чтение уведомлений WhatsApp и Viber. Доступ включается руками в настройках. ARCHITECTURE 4.4. -->
+        <service
+            android:name=".monitor.MonitorListenerService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.protocol.files"
